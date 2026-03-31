@@ -1,0 +1,128 @@
+C51 COMPILER V9.54   MIAN                                                                  03/05/2025 16:45:52 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MIAN
+OBJECT MODULE PLACED IN .\Objects\mian.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\mian.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\User;.\Driver) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\mian.lst) OBJECT(.\Objects\mian.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Key.H>
+   5          #include <Led.H>
+   6          #include <Seg.H>
+   7          #include <iic.H>
+   8          /*变量声明区域*/
+   9          unsigned char Key_Slow;
+  10          unsigned char Key_Val,Key_Old,Key_Down,Key_Up;
+  11          unsigned char Seg_Slow;
+  12          unsigned char Seg_Pos;
+  13          unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  14          unsigned char Seg_Point[8]={0,0,0,0,0,0,0,0};
+  15          unsigned char Led_Buf[8]={0,0,0,0,0,0,0,0};
+  16          unsigned char dat_Light;
+  17          unsigned char dat_R;
+  18          
+  19          /*按键处理区域*/
+  20          void Key_Proc()
+  21          {
+  22   1              if(Key_Slow)return;
+  23   1              Key_Slow=1;
+  24   1              
+  25   1              Key_Val=Key_Read();
+  26   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  27   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  28   1              Key_Old=Key_Val;
+  29   1              
+  30   1              
+  31   1      }
+  32          /*数码管处理区域*/
+  33          void Seg_Proc()
+  34          {
+  35   1              if(Seg_Slow)return;
+  36   1              Seg_Slow=1;
+  37   1              
+  38   1              DA_Write(255);
+  39   1              dat_Light=AD_Read(0x43);
+  40   1              dat_R=AD_Read(0x41);
+  41   1              
+  42   1              Seg_Buf[0]=dat_Light/100%10;
+  43   1              Seg_Buf[1]=dat_Light/10%10;
+  44   1              Seg_Buf[2]=dat_Light/1%10;
+  45   1              
+  46   1              Seg_Buf[5]=dat_R/100%10;
+  47   1              Seg_Buf[6]=dat_R/10%10;
+  48   1              Seg_Buf[7]=dat_R/1%10;
+  49   1      /*      
+  50   1              dat_Light=AD_Read(0x41);
+  51   1              
+  52   1              Seg_Buf[0]=dat_Light/100%10;
+  53   1              Seg_Buf[1]=dat_Light/10%10;
+  54   1              Seg_Buf[2]=dat_Light/1%10;
+C51 COMPILER V9.54   MIAN                                                                  03/05/2025 16:45:52 PAGE 2   
+
+  55   1      */
+  56   1              
+  57   1      }
+  58          /*Led处理区域*/
+  59          void Led_Proc()
+  60          {
+  61   1              Led_Buf[2]=1;
+  62   1      }
+  63          /*定时器区域*/
+  64          void Timer0_Isr(void) interrupt 1
+  65          {
+  66   1              if(++Key_Slow==10)Key_Slow=0;
+  67   1              if(++Seg_Slow==500)Seg_Slow=0;
+  68   1              
+  69   1              if(++Seg_Pos==8)Seg_Pos=0;
+  70   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+  71   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+  72   1      }
+  73          
+  74          void Timer0_Init(void)          //1毫秒@12.000MHz
+  75          {
+  76   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+  77   1              TMOD &= 0xF0;                   //设置定时器模式
+  78   1              TL0 = 0x18;                             //设置定时初始值
+  79   1              TH0 = 0xFC;                             //设置定时初始值
+  80   1              TF0 = 0;                                //清除TF0标志
+  81   1              TR0 = 1;                                //定时器0开始计时
+  82   1              ET0 = 1;                                //使能定时器0中断
+  83   1              EA=1;
+  84   1      }
+  85          /*初始化区域*/
+  86          void Init_Proc()
+  87          {
+  88   1              Sys_Init();
+  89   1              Timer0_Init();
+  90   1      }
+  91          /*主函数区域*/
+  92          void main()
+  93          {
+  94   1              Init_Proc();
+  95   1              while(1)
+  96   1              {
+  97   2                      Key_Proc();
+  98   2                      Seg_Proc();
+  99   2                      Led_Proc();
+ 100   2              }
+ 101   1      }
+ 102          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    301    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     33    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

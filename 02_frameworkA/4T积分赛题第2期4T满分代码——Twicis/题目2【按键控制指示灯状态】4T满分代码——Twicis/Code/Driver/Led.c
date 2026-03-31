@@ -1,0 +1,19 @@
+#include <Led.H>
+void Led_Disp(unsigned char addr,enable)
+{
+	static unsigned char temp_1=0x00;
+	static unsigned char temp_old_1=0x00;
+	
+	if(enable)
+		temp_1|=0x01<<addr;
+	else
+		temp_1&=~(0x01<<addr);
+	
+	if(temp_1!=temp_old_1)
+	{
+		P0=~temp_1;
+		P2=P2&0x1f|0x80;
+		P2&=0x1f;
+		temp_old_1=temp_1;
+	}
+}

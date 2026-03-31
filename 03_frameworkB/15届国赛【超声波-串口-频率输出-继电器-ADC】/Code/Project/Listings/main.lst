@@ -1,0 +1,583 @@
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Source\User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Source\User;..\
+                    -Source\Driver) DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <init.H>
+   4          #include <led.H>
+   5          #include <seg.H>
+   6          #include <key.H>
+   7          #include <uart.H>
+   8          #include <ultrasound.H>
+   9          #include <iic.H>
+  10          #include <math.H>
+  11          
+  12          /*变量声明区域*/
+  13          idata unsigned long int sys_tick;
+  14          pdata unsigned char uart_buf[10]={0};
+  15          idata unsigned char uart_rx_index;
+  16          pdata unsigned char uart_rx_flag;
+  17          idata unsigned char uart_rx_tick;
+  18          idata unsigned char seg_pos;
+  19          idata unsigned char seg_buf[8]={10,10,10,10,10,10,10,10};
+  20          pdata unsigned char led_buf[8]={0,0,0,0,0,0,0,0};
+  21          idata unsigned char key_val,key_old,key_down,key_up;
+  22          idata unsigned char seg_show_mode=0;//【0-坐标】【1-速度】【2-参数】
+  23          
+  24          idata unsigned int ne555_frequency;
+  25          idata unsigned int ne555_cycle_1s;
+  26          idata unsigned char device_status=1;                            //【0-运行】【1-空闲】【2-等待】
+  27          idata float device_speed;                                                       //设备运行速度，保留1位小数，单位为cm/s，不考虑负数情况
+  28          pdata float speed_parameter_R=1.0;                                      //可调参数R：1.0~2.0 (cm/s)/Hz
+  29          pdata char speed_parameter_B=0;                                         //可调参数B：-90~90 cm/s
+  30          idata bit para_RB_index;                                                        //【0-R】【1-B】
+  31          pdata float par_R_set=1.0;                                                      //参数R设置参数：1.0~2.0 (cm/s)/Hz
+  32          pdata char par_B_set=0;                                                         //参数B设置参数：-90~90 cm/s
+  33          pdata unsigned int device_location[2]={0,0};            //设备位置坐标{x,y}
+  34          pdata unsigned int destination_location[2]={0,0};       //目的地坐标{x,y}
+  35          idata bit destination_get_flag;                                         //接收到目的地坐标标志位【0-未收到】【1-接收到】
+  36          
+  37          idata int displacement_length;
+  38          idata float speed_x,speed_y;
+  39          idata float dis_x,dis_y;
+  40          idata unsigned char us_distance;
+  41          //idata bit obstacle_flag;      //存在障碍物标志位【0-不存在】【1-存在】
+  42          
+  43          idata float ad_light_voltage;
+  44          idata unsigned char day_night_status;//【0-夜间】【1-日间】
+  45          
+  46          idata unsigned char led_flash_time_100ms;
+  47          idata bit led_flash_flag;
+  48          
+  49          pdata unsigned int time_3000ms;
+  50          idata bit arrived_flag;
+  51          /*数据获取区域*/
+  52          void us_dist_task(void)
+  53          {
+  54   1              us_distance=us_distance_get();
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 2   
+
+  55   1              if(device_status==0 && us_distance<=30) //【0-运行】状态下，若距离小于30cm
+  56   1              {
+  57   2      //              obstacle_flag=1;
+  58   2                      device_status=2;                                        //设备自动切换到【2-等待】状态
+  59   2              }
+  60   1      }
+  61          void adda_task(void)
+  62          {
+  63   1              ad_light_voltage=ad_read(0x01)/51.0;
+  64   1              day_night_status=(ad_light_voltage>1.2);//分压结果大于1.2V时，为日间场景，否则为夜间场景。
+  65   1      }
+  66          void device_move_task(void)
+  67          {
+  68   1              if(device_status==0)
+  69   1              {
+  70   2                      dis_x=fabs((int)device_location[0]-(int)destination_location[0]);
+  71   2                      dis_y=fabs((int)device_location[1]-(int)destination_location[1]);
+  72   2                      displacement_length=sqrt(pow(dis_x,2)+pow(dis_y,2));//计算需要位移的距离
+  73   2                      speed_x=device_speed*(dis_x/displacement_length);
+  74   2                      speed_y=device_speed*(dis_y/displacement_length);
+  75   2                      if(destination_get_flag==1)
+  76   2                      {
+  77   3                              if(destination_location[0]>device_location[0])
+  78   3                                      device_location[0]+=speed_x/10.0;
+  79   3                              else if(destination_location[0]<device_location[0] && device_location[0]>=0)
+  80   3                                      device_location[0]-=speed_x/10.0;
+  81   3                              dis_x-=speed_x/10.0;
+  82   3                              
+  83   3                              if(destination_location[1]>device_location[1])
+  84   3                                      device_location[1]+=speed_y/10.0;
+  85   3                              else if(destination_location[1]<device_location[1] && device_location[1]>=0)
+  86   3                                      device_location[1]-=speed_y/10.0;
+  87   3                              dis_y-=speed_y/10.0;
+  88   3                              
+  89   3                              if(dis_x<=speed_x/10.0 && dis_y<=speed_y/10.0)
+  90   3                              {
+  91   4                                      device_status=1;
+  92   4                                      displacement_length=0;
+  93   4                                      dis_x=dis_y=0;
+  94   4                                      device_speed=speed_x=speed_y=0;
+  95   4                                      destination_get_flag=0;
+  96   4                                      arrived_flag=1;
+  97   4                                      device_location[0]=destination_location[0];
+  98   4                                      device_location[1]=destination_location[1];
+  99   4                              }
+ 100   3                      }
+ 101   2              }
+ 102   1      }
+ 103          /*按键控制区域*/
+ 104          void key_task(void)
+ 105          {
+ 106   1              key_val=key_read();
+ 107   1              key_down=key_val&(key_old^key_val);
+ 108   1              key_up=~key_val&(key_old^key_val);
+ 109   1              key_old=key_val;
+ 110   1              
+ 111   1              if(key_down==6)
+ 112   1              {
+ 113   2                      destination_location[0]=100;
+ 114   2                      destination_location[1]=100;
+ 115   2                      destination_get_flag=1;
+ 116   2              }
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 3   
+
+ 117   1              
+ 118   1              switch(key_down)
+ 119   1              {
+ 120   2                      case 4:
+ 121   2                              //【0-运行】【1-空闲】【2-等待】
+ 122   2                              switch(device_status)
+ 123   2                              {
+ 124   3                                      case 1:
+ 125   3                                              if(destination_get_flag==1)     //若已收到目的地坐标，按下S4按键
+ 126   3                                              {
+ 127   4      //                                              dis_x=fabs((int)device_location[0]-(int)destination_location[0]);
+ 128   4      //                                              dis_y=fabs((int)device_location[1]-(int)destination_location[1]);
+ 129   4      //                                              displacement_length=sqrt(pow(dis_x,2)+pow(dis_y,2));//计算需要位移的距离
+ 130   4      //                                              speed_x=device_speed*(dis_x/displacement_length);
+ 131   4      //                                              speed_y=device_speed*(dis_y/displacement_length);
+ 132   4                                                      device_status=0;                //切换为【0-运行】状态
+ 133   4                                              }
+ 134   3                                      break;
+ 135   3                                      case 2:
+ 136   3                                              if(us_distance>30)//若"障碍物"已清除，按下S4按键
+ 137   3                                                      device_status=0;//切换为【0-运行】状态
+ 138   3                                      break;
+ 139   3                                      case 0:
+ 140   3                                              device_status=2;//切换为【2-等待】状态
+ 141   3                                      break;
+ 142   3                              }
+ 143   2                      break;
+ 144   2                      case 5://在【1-空闲】状态下，强制将设备当前位置重置为（0,0），其它状态下，S5按键无效
+ 145   2                              if(device_status==1)
+ 146   2                              {
+ 147   3                                      device_location[0]=0;
+ 148   3                                      device_location[1]=0;
+ 149   3                                      destination_location[0]=0;
+ 150   3                                      destination_location[1]=0;
+ 151   3                              }
+ 152   2                      break;
+ 153   2                      case 8://"数码管显示界面切换"按键
+ 154   2                              seg_show_mode=(++seg_show_mode)%3;
+ 155   2                              if(seg_show_mode==2)
+ 156   2                              {
+ 157   3                                      para_RB_index=0;
+ 158   3                                      par_R_set=speed_parameter_R;
+ 159   3                                      par_B_set=speed_parameter_B;
+ 160   3                              }
+ 161   2                              if(seg_show_mode==0)
+ 162   2                              {
+ 163   3                                      speed_parameter_R=par_R_set;
+ 164   3                                      speed_parameter_B=par_B_set;
+ 165   3                              }
+ 166   2                      break;
+ 167   2                      case 9:
+ 168   2                              if(seg_show_mode==2)
+ 169   2                                      para_RB_index^=1;
+ 170   2                      break;
+ 171   2                      case 12://"加"按键
+ 172   2                              if(seg_show_mode==2)
+ 173   2                              {
+ 174   3                                      if(para_RB_index==0)//R
+ 175   3                                      {
+ 176   4                                              par_R_set+=0.1;
+ 177   4                                              if(par_R_set>2.0)
+ 178   4                                                      par_R_set=2.0;
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 4   
+
+ 179   4                                      }
+ 180   3                                      else//B
+ 181   3                                      {
+ 182   4                                              par_B_set+=5;
+ 183   4                                              if(par_B_set>90)
+ 184   4                                                      par_B_set=90;
+ 185   4                                              
+ 186   4                                      }
+ 187   3                              }
+ 188   2                      break;
+ 189   2                      case 13://"减"按键
+ 190   2                              if(seg_show_mode==2)
+ 191   2                              {
+ 192   3                                      if(para_RB_index==0)//R
+ 193   3                                      {
+ 194   4                                              par_R_set-=0.1;
+ 195   4                                              if(par_R_set<1.0)
+ 196   4                                                      par_R_set=1.0;
+ 197   4                                      }
+ 198   3                                      else//B
+ 199   3                                      {
+ 200   4                                              par_B_set-=5;
+ 201   4                                              if(par_B_set<-90)
+ 202   4                                                      par_B_set=-90;
+ 203   4                                      }
+ 204   3                              }
+ 205   2                      break;
+ 206   2              }
+ 207   1      }
+ 208          /*数码管控制区域*/
+ 209          void seg_task(void)
+ 210          {
+ 211   1              unsigned char j;
+ 212   1              switch(seg_show_mode)
+ 213   1              {
+ 214   2                      case 0://【0-坐标】
+ 215   2                              seg_buf[0]=12;
+ 216   2                              if(device_status==0 || device_status==2)//【0-运行】或【2-等待】状态下，显示目的地X、丫坐标
+ 217   2                              {
+ 218   3                                      seg_buf[1]=destination_location[0]/100%10;
+ 219   3                                      seg_buf[2]=destination_location[0]/10%10;
+ 220   3                                      seg_buf[3]=destination_location[0]/1%10;
+ 221   3                                      seg_buf[4]=11;
+ 222   3                                      seg_buf[5]=destination_location[1]/100%10;
+ 223   3                                      seg_buf[6]=destination_location[1]/10%10;
+ 224   3                                      seg_buf[7]=destination_location[1]/1%10;
+ 225   3                              }
+ 226   2                              else//【1-空闲】状态下，显示设备当前位置X、Y坐标
+ 227   2                              {
+ 228   3                                      seg_buf[1]=device_location[0]/100%10;
+ 229   3                                      seg_buf[2]=device_location[0]/10%10;
+ 230   3                                      seg_buf[3]=device_location[0]/1%10;
+ 231   3                                      seg_buf[4]=11;
+ 232   3                                      seg_buf[5]=device_location[1]/100%10;
+ 233   3                                      seg_buf[6]=device_location[1]/10%10;
+ 234   3                                      seg_buf[7]=device_location[1]/1%10;
+ 235   3                              }
+ 236   2                              for(j=1;j<3;j++)
+ 237   2                              {
+ 238   3                                      if(seg_buf[j]==0 && seg_buf[j-1]>=10)
+ 239   3                                              seg_buf[j]=10;
+ 240   3                              }               
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 5   
+
+ 241   2                              for(j=5;j<7;j++)
+ 242   2                              {
+ 243   3                                      if(seg_buf[j]==0 && seg_buf[j-1]>=10)
+ 244   3                                              seg_buf[j]=10;
+ 245   3                              }               
+ 246   2                      break;
+ 247   2                      case 1://【1-速度】
+ 248   2                              seg_buf[0]=13;
+ 249   2                              seg_buf[1]=device_status+1;
+ 250   2                              seg_buf[2]=10;
+ 251   2                              if(device_status==0)//【0-运行】
+ 252   2                              {
+ 253   3                                      seg_buf[3]=(unsigned int)(device_speed)/1000%10;
+ 254   3                                      seg_buf[4]=(unsigned int)(device_speed)/100%10;
+ 255   3                                      seg_buf[5]=(unsigned int)(device_speed)/10%10;
+ 256   3                                      seg_buf[6]=(unsigned int)(device_speed)/1%10+',';
+ 257   3                                      seg_buf[7]=(unsigned int)(device_speed*10)%10;
+ 258   3                              }
+ 259   2                              else if(device_status==1)//【1-空闲】
+ 260   2                              {
+ 261   3                                      seg_buf[3]=seg_buf[4]=seg_buf[5]=seg_buf[6]=seg_buf[7]=11;
+ 262   3      //                              seg_buf[3]=ne555_frequency/10000%10;
+ 263   3      //                              seg_buf[4]=ne555_frequency/1000%10;;
+ 264   3      //                              seg_buf[5]=ne555_frequency/100%10;
+ 265   3      //                              seg_buf[6]=ne555_frequency/10%10;
+ 266   3      //                              seg_buf[7]=ne555_frequency/1%10;
+ 267   3                              }
+ 268   2                              else if(device_status==2)//【2-等待】
+ 269   2                              {
+ 270   3                                      seg_buf[3]=us_distance/10000%10;
+ 271   3                                      seg_buf[4]=us_distance/1000%10;
+ 272   3                                      seg_buf[5]=us_distance/100%10;
+ 273   3                                      seg_buf[6]=us_distance/10%10;
+ 274   3                                      seg_buf[7]=us_distance/1%10;
+ 275   3                              }
+ 276   2                              for(j=3;j<7;j++)
+ 277   2                              {
+ 278   3                                      if(seg_buf[j]==0 && seg_buf[j-1]>=10)
+ 279   3                                              seg_buf[j]=10;
+ 280   3                              }                       
+ 281   2                      break;
+ 282   2                      case 2://【2-参数】
+ 283   2                              seg_buf[0]=14;
+ 284   2                              seg_buf[1]=10;
+ 285   2                              seg_buf[2]=(unsigned char)(par_R_set)%10+',';
+ 286   2                              seg_buf[3]=(unsigned char)(par_R_set*10)%10;
+ 287   2                              seg_buf[4]=10;
+ 288   2                              if(par_B_set>=100 && par_B_set<=999)            //100 <= P <= 999
+ 289   2                              {
+ 290   3                                      seg_buf[5]=par_B_set/100%10;
+ 291   3                                      seg_buf[6]=par_B_set/10%10;
+ 292   3                                      seg_buf[7]=par_B_set/1%10;
+ 293   3                              }
+ 294   2                              else if(par_B_set>=10 && par_B_set<=99) //10 <= P <= 99
+ 295   2                              {
+ 296   3                                      seg_buf[5]=10;
+ 297   3                                      seg_buf[6]=par_B_set/10%10;
+ 298   3                                      seg_buf[7]=par_B_set/1%10;
+ 299   3                              }
+ 300   2                              else if(par_B_set>=0 && par_B_set<=9)           //0 <= P <= 9
+ 301   2                              {
+ 302   3                                      seg_buf[5]=10;
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 6   
+
+ 303   3                                      seg_buf[6]=10;
+ 304   3                                      seg_buf[7]=par_B_set/1%10;
+ 305   3                              }
+ 306   2                              else if(par_B_set>=-9 && par_B_set<=-1) //-9 <= P <= -1
+ 307   2                              {
+ 308   3                                      seg_buf[5]=10;
+ 309   3                                      seg_buf[6]=11;
+ 310   3                                      seg_buf[7]=(-par_B_set)/1%10;
+ 311   3                              }
+ 312   2                              else if(par_B_set>=-99 && par_B_set<=-10)       //-99 <= P <= -10
+ 313   2                              {
+ 314   3                                      seg_buf[5]=11;
+ 315   3                                      seg_buf[6]=(-par_B_set)/10%10;
+ 316   3                                      seg_buf[7]=(-par_B_set)/1%10;
+ 317   3                              }
+ 318   2                      break;
+ 319   2                      
+ 320   2              }
+ 321   1      }
+ 322          /*LED控制区域*/
+ 323          void led_task(void)
+ 324          {
+ 325   1              if(device_status==1)            //【1-空闲】状态：L1熄灭
+ 326   1                      led_buf[0]=0;
+ 327   1              else if(device_status==0)       //【0-运行】状态：L1点亮
+ 328   1                      led_buf[0]=1;
+ 329   1              else if(device_status==2)       //【2-等待】状态：L1闪烁
+ 330   1                      led_buf[0]=led_flash_flag;
+ 331   1              
+ 332   1              
+ 333   1              if(device_status==0)//【0-运行】状态下：【1-日间】L2熄灭，【0-夜间】L2点亮。
+ 334   1                      led_buf[1]=!day_night_status;
+ 335   1              else                            //【1-空闲】【2-等待】状态下：L2 熄灭
+ 336   1                      led_buf[1]=0;
+ 337   1      
+ 338   1              
+ 339   1              led_buf[2]=arrived_flag;
+ 340   1              
+ 341   1              led_disp(led_buf);
+ 342   1              relay(device_status==0);
+ 343   1      }
+ 344          /*串口接收区域*/
+ 345          void uart_task(void)
+ 346          {
+ 347   1              unsigned int x,y;// 用于存储坐标{x,y}
+ 348   1              int chars_read;  // 用于存储已读取的字符数
+ 349   1              if(uart_rx_index==0)return;
+ 350   1              if(uart_rx_tick>=10)
+ 351   1              {
+ 352   2                      int result = sscanf(uart_buf, "(%u,%u)%n", &x, &y, &chars_read);
+ 353   2                      uart_rx_flag=0;
+ 354   2                      uart_rx_tick=0;
+ 355   2                      
+ 356   2                      //device_status:【0-运行】【1-空闲】【2-等待】          
+ 357   2                      // 验证：(成功解析两个数字) && (读取的字符数等于输入字符串长度)
+ 358   2                      if(result == 2 && chars_read == strlen(uart_buf))
+ 359   2                      {
+ 360   3                              if(device_status==1)
+ 361   3                              {
+ 362   4                                      destination_get_flag=1;
+ 363   4                                      destination_location[0]=x;
+ 364   4                                      destination_location[1]=y;
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 7   
+
+ 365   4                                      printf("Got it");
+ 366   4      //                              printf("(%u,%u)\n",destination_location[0],destination_location[1]);
+ 367   4      //                              printf("设备状态=%bu\n",device_status);
+ 368   4      //                              printf("获取目的地=%bu\n",(unsigned char)destination_get_flag);
+ 369   4      //                              printf("设备速度=%f\n",device_speed);
+ 370   4      //                              printf("x轴相距=%f\n",dis_x);
+ 371   4      //                              printf("y轴相距=%f\n",dis_y);
+ 372   4                              }
+ 373   3                              else
+ 374   3                              {
+ 375   4                                      printf("Busy");
+ 376   4                              }
+ 377   3                      }
+ 378   2                      
+ 379   2                      else if (strcmp(uart_buf, "?") == 0)
+ 380   2                      {
+ 381   3                              if(device_status==1)
+ 382   3                                      printf("Idle");
+ 383   3                              else if(device_status==2)
+ 384   3                                      printf("Wait");
+ 385   3                              else if(device_status==0)
+ 386   3                                      printf("Busy");
+ 387   3                      }       
+ 388   2                      else if (strcmp(uart_buf, "#") == 0)
+ 389   2                      {
+ 390   3                              printf("(%u,%u)",device_location[0],device_location[1]);
+ 391   3      //                      printf("设备状态=%bu\n",device_status);
+ 392   3      //                      printf("获取目的地=%bu\n",(unsigned char)destination_get_flag);
+ 393   3      //                      printf("设备速度=%f\n",device_speed);
+ 394   3      //                      printf("x轴相距=%f\n",dis_x);
+ 395   3      //                      printf("y轴相距=%f\n",dis_y);
+ 396   3                      }
+ 397   2                      else
+ 398   2                      {
+ 399   3                              printf("Error");
+ 400   3                      }
+ 401   2                      memset(uart_buf,0,uart_rx_index);
+ 402   2                      uart_rx_index=0;
+ 403   2              }
+ 404   1      }
+ 405          /*NE555定时器0区域*/
+ 406          void Timer0_Init(void)          //1毫秒@12.000MHz
+ 407          {
+ 408   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 409   1              TMOD &= 0xF0;                   //设置定时器模式
+ 410   1              TMOD |= 0x05;                   //设置定时器模式
+ 411   1              TL0 = 0;                                //设置定时初始值
+ 412   1              TH0 = 0;                                //设置定时初始值
+ 413   1              TF0 = 0;                                //清除TF0标志
+ 414   1              TR0 = 1;                                //定时器0开始计时
+ 415   1      }
+ 416          /*定时器1区域*/
+ 417          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 418          {
+ 419   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 420   1              TMOD &= 0x0F;                   //设置定时器模式
+ 421   1              TL1 = 0x18;                             //设置定时初始值
+ 422   1              TH1 = 0xFC;                             //设置定时初始值
+ 423   1              TF1 = 0;                                //清除TF1标志
+ 424   1              TR1 = 1;                                //定时器1开始计时
+ 425   1              ET1 = 1;                                //使能定时器1中断
+ 426   1              EA=1;
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 8   
+
+ 427   1      }
+ 428          void Timer1_Isr(void) interrupt 3
+ 429          {
+ 430   1              sys_tick++;
+ 431   1              
+ 432   1              if(++ne555_cycle_1s==100)
+ 433   1              {
+ 434   2                      ne555_cycle_1s=0;
+ 435   2                      ne555_frequency=TH0<<8|TL0;
+ 436   2                      ne555_frequency=ne555_frequency*10;
+ 437   2                      device_speed=(3.14*speed_parameter_R*ne555_frequency)/100.0+speed_parameter_B;
+ 438   2      //              device_speed=(3.00*speed_parameter_R*ne555_frequency)/100.0+speed_parameter_B;
+ 439   2                      TH0=TL0=0;
+ 440   2              }
+ 441   1              
+ 442   1              if(uart_rx_flag)
+ 443   1                      uart_rx_tick++;
+ 444   1              
+ 445   1              seg_pos=(++seg_pos)%8;
+ 446   1              if(seg_buf[seg_pos]>20)
+ 447   1                      seg_disp(seg_pos,seg_buf[seg_pos]-',',1);
+ 448   1              else
+ 449   1                      seg_disp(seg_pos,seg_buf[seg_pos],0);
+ 450   1              
+ 451   1              if(device_status==2)
+ 452   1              {
+ 453   2                      if(++led_flash_time_100ms==100)
+ 454   2                      {
+ 455   3                              led_flash_time_100ms=0;
+ 456   3                              led_flash_flag^=1;
+ 457   3                      }
+ 458   2              }
+ 459   1              else
+ 460   1                      led_flash_time_100ms=led_flash_flag=0;
+ 461   1              
+ 462   1              
+ 463   1              if(arrived_flag==1)
+ 464   1              {
+ 465   2                      if(++time_3000ms>=3000)
+ 466   2                      {
+ 467   3                              arrived_flag=0;
+ 468   3                              time_3000ms=0;
+ 469   3                      }
+ 470   2              }
+ 471   1      }
+ 472          /*串口中断区域*/
+ 473          void Uart1_Isr(void) interrupt 4
+ 474          {
+ 475   1              if (RI)                         //检测串口1接收中断
+ 476   1              {
+ 477   2                      uart_rx_tick=0;
+ 478   2                      uart_rx_flag=1;
+ 479   2                      uart_buf[uart_rx_index++]=SBUF;
+ 480   2                      RI = 0;                 //清除串口1接收中断请求位
+ 481   2                      if (uart_rx_index > 10)
+ 482   2                      {
+ 483   3                        uart_rx_index = 0; // 防止溢出
+ 484   3                        memset(uart_buf, 0, 10);
+ 485   3                      }
+ 486   2              }
+ 487   1      }
+ 488          /*调度器区域*/
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 9   
+
+ 489          typedef struct{
+ 490                  void(*task_function)(void);
+ 491                  unsigned long int rate_time;
+ 492                  unsigned long int last_time;
+ 493          }Task_Message;
+ 494          
+ 495          idata Task_Message schedule_task[]={
+ 496                  {led_task,1,0},
+ 497                  {seg_task,200,0},
+ 498                  {key_task,10,0},
+ 499                  {uart_task,10,0},
+ 500                  {adda_task,160,0},
+ 501                  {us_dist_task,100,0},
+ 502                  {device_move_task,100,0},
+ 503          };
+ 504          
+ 505          idata unsigned char task_num;
+ 506          void schedule_init(void)
+ 507          {
+ 508   1              task_num=sizeof(schedule_task)/sizeof(Task_Message);
+ 509   1      }
+ 510          
+ 511          void schedule_run(void)
+ 512          {
+ 513   1              unsigned char i;
+ 514   1              for(i=0;i<task_num;i++)
+ 515   1              {
+ 516   2                      unsigned long int now_time=sys_tick;
+ 517   2                      if(now_time>=(schedule_task[i].rate_time+schedule_task[i].last_time))
+ 518   2                      {
+ 519   3                              schedule_task[i].last_time=now_time;
+ 520   3                              schedule_task[i].task_function();
+ 521   3                      }
+ 522   2              }
+ 523   1      }
+ 524          /*初始化区域*/
+ 525          void init_task(void)
+ 526          {
+ 527   1              sys_init();
+ 528   1              schedule_init();
+ 529   1              Timer0_Init();
+ 530   1              Uart1_Init();
+ 531   1              Timer1_Init();
+ 532   1      }
+ 533          /*主函数区域*/
+ 534          void main()
+ 535          {
+ 536   1              init_task();
+ 537   1              while(1)
+ 538   1              {
+ 539   2                      schedule_run();
+ 540   2              }
+ 541   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   3293    ----
+   CONSTANT SIZE    =     50    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =     39    ----
+   DATA SIZE        =   ----      14
+   IDATA SIZE       =    132    ----
+C51 COMPILER V9.54   MAIN                                                                  06/10/2025 16:56:39 PAGE 10  
+
+   BIT SIZE         =      4    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

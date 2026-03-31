@@ -1,0 +1,407 @@
+C51 COMPILER V9.54   MAIN                                                                  03/30/2025 08:28:11 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <ds1302.H>
+   8          #include <onewire.H>
+   9          #include <iic.H>
+  10          /*变量声明区域*/
+  11          idata unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+  12          idata unsigned char Seg_Slow,Seg_Pos;
+  13          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  14          idata unsigned char Seg_Point[8]={0,0,0,0,0,0,0,0};
+  15          idata unsigned char Led_Buf[8]={0,0,0,0,0,0,0,0};
+  16          idata bit Beeper_Buf=0;
+  17          idata bit Relay_Buf=0;
+  18          
+  19          idata unsigned char Seg_Show_Mode=0;//【0-时间界面】【1-回显界面】【2-参数界面】
+  20          idata unsigned char Echo_Show_Mode=0;//【0-温度回显】【1-湿度回显】【2-时间回显】
+  21          idata unsigned char T_H_Get_Mode=0;//【0-关闭温湿度采集】【1-开启温湿度采集】
+  22          idata unsigned int Time_3000ms;
+  23          
+  24          
+  25          idata unsigned char Rtc[3]={0x13,0x03,0x05};
+  26          
+  27          idata unsigned int Time_1s;
+  28          idata unsigned int Frequency;
+  29          idata float Temperature_Parameter=30;
+  30          idata float Temperature;
+  31          idata float Humidity;
+  32          
+  33          idata float ADC_Light;
+  34          idata bit Bright_State;//【0-挡光 暗】【1-未挡 亮】
+  35          idata bit Bright_State_Old;//【0-挡光 暗】【1-未挡 亮】
+  36          
+  37          idata float Temperature_Max;
+  38          idata float Temperature_Average;
+  39          idata float Humidity_Max;
+  40          idata float Humidity_Average;
+  41          idata unsigned char Rtc_Echo[3];
+  42          idata unsigned char Count=0;
+  43          idata float Temperature_Old;
+  44          idata float Humidity_Old;
+  45          idata bit Humidity_Error;
+  46          
+  47          idata bit Key_Press_Flag;
+  48          idata unsigned int Time_2000ms;
+  49          
+  50          idata unsigned char Time_100ms;
+  51          idata bit Led_Flash_Flag;
+  52          /*按键控制区域*/
+  53          void Key_Proc()
+  54          {
+C51 COMPILER V9.54   MAIN                                                                  03/30/2025 08:28:11 PAGE 2   
+
+  55   1              if(Key_Slow)return;
+  56   1              Key_Slow=1;
+  57   1              
+  58   1              Key_Val=Key_Read();
+  59   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  60   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  61   1              Key_Old=Key_Val;
+  62   1              
+  63   1              switch(Key_Down)
+  64   1              {
+  65   2                      case 4:
+  66   2                              if(++Seg_Show_Mode==3)Seg_Show_Mode=0;
+  67   2                              if(Seg_Show_Mode==1)Echo_Show_Mode=0;
+  68   2                      break;
+  69   2                      case 5:
+  70   2                              if(Seg_Show_Mode==1)
+  71   2                              {
+  72   3                                      if(++Echo_Show_Mode==3)Echo_Show_Mode=0;
+  73   3                              }
+  74   2                      break;
+  75   2                      case 8:
+  76   2                              if(Seg_Show_Mode==2)
+  77   2                              {
+  78   3                                      if(++Temperature_Parameter==100)Temperature_Parameter=99;
+  79   3                              }
+  80   2                      break;
+  81   2                      case 9:
+  82   2                              if(Seg_Show_Mode==2)
+  83   2                              {
+  84   3                                      if(--Temperature_Parameter==-1)Temperature_Parameter=0;
+  85   3                              }
+  86   2                      break;
+  87   2              }
+  88   1              if(Seg_Show_Mode==1 && Echo_Show_Mode==2)
+  89   1              {
+  90   2                      if(Key_Down==9)
+  91   2                      {
+  92   3                              Key_Press_Flag=1;
+  93   3                      }
+  94   2                      if(Key_Up==9)
+  95   2                      {
+  96   3                              if(Time_2000ms==2000)
+  97   3                              {
+  98   4                                      Time_2000ms=0;
+  99   4                                      Temperature_Old=Temperature_Max=Temperature_Average=0;
+ 100   4                                      Humidity_Old=Humidity_Max=Humidity_Average=0;
+ 101   4                                      Rtc_Echo[0]=Rtc_Echo[1]=Rtc_Echo[2]=0x00;;
+ 102   4                                      Count=0;
+ 103   4                              }
+ 104   3                              else
+ 105   3                              {
+ 106   4                                      Time_2000ms=0;
+ 107   4                              }
+ 108   3                              Key_Press_Flag=0;
+ 109   3                      }
+ 110   2              }
+ 111   1              
+ 112   1      }
+ 113          /*数码管显示区域*/
+ 114          void Seg_Proc()
+ 115          {
+ 116   1              if(Seg_Slow)return;
+C51 COMPILER V9.54   MAIN                                                                  03/30/2025 08:28:11 PAGE 3   
+
+ 117   1              Seg_Slow=1;
+ 118   1              
+ 119   1              
+ 120   1              RTC_Read(Rtc);
+ 121   1              
+ 122   1              
+ 123   1              Bright_State_Old=Bright_State;
+ 124   1              ADC_Light=AD_Read(1)/51.0;
+ 125   1              if(ADC_Light<1.0)
+ 126   1                      Bright_State=0;
+ 127   1              else
+ 128   1                      Bright_State=1;
+ 129   1              if(T_H_Get_Mode==0 && Bright_State==0 && Bright_State_Old==1)
+ 130   1              {
+ 131   2                      T_H_Get_Mode=1;
+ 132   2                      Temperature_Old=Temperature;
+ 133   2                      Humidity_Old=Humidity;
+ 134   2                      
+ 135   2                      Temperature=Temperature_Read();
+ 136   2                      if(Frequency>200 && Frequency<2000)
+ 137   2                              Humidity=(2*Frequency+50)/45.0;
+ 138   2                      else if(Frequency<=200)
+ 139   2                              Humidity=0;
+ 140   2                      else if(Frequency>=2000)
+ 141   2                              Humidity=0;
+ 142   2                      
+ 143   2                      if(Humidity!=0)
+ 144   2                      {
+ 145   3                              Humidity_Error=0;
+ 146   3                              if(Temperature>Temperature_Max)
+ 147   3                                      Temperature_Max=Temperature;
+ 148   3                              if(Humidity>Humidity_Max)
+ 149   3                                      Humidity_Max=Humidity;
+ 150   3                              Temperature_Average=(Temperature_Average*Count+Temperature)/(Count+1);
+ 151   3                              Humidity_Average=(Humidity_Average*Count+Humidity)/(Count+1);
+ 152   3                              Rtc_Echo[0]=Rtc[0];
+ 153   3                              Rtc_Echo[1]=Rtc[1];
+ 154   3                              Rtc_Echo[2]=Rtc[2];
+ 155   3                              Count++;
+ 156   3                      }
+ 157   2                      else
+ 158   2                              Humidity_Error=1;
+ 159   2              }
+ 160   1              
+ 161   1              
+ 162   1              if(T_H_Get_Mode==0)
+ 163   1              {
+ 164   2                      switch(Seg_Show_Mode)
+ 165   2                      {
+ 166   3                              case 0://【0-时间界面】
+ 167   3                                      Seg_Buf[0]=Rtc[0]/16%16;
+ 168   3                                      Seg_Buf[1]=Rtc[0]%16;
+ 169   3                                      Seg_Buf[2]=11;
+ 170   3                                      Seg_Buf[3]=Rtc[1]/16%16;
+ 171   3                                      Seg_Buf[4]=Rtc[1]%16;
+ 172   3                                      Seg_Buf[5]=11;
+ 173   3                                      Seg_Buf[6]=Rtc[2]/16%16;
+ 174   3                                      Seg_Buf[7]=Rtc[2]%16;
+ 175   3                              break;
+ 176   3                              case 1://【1-回显界面】
+ 177   3                                      if(Echo_Show_Mode==0)//【0-温度回显】
+ 178   3                                      {
+C51 COMPILER V9.54   MAIN                                                                  03/30/2025 08:28:11 PAGE 4   
+
+ 179   4                                              Seg_Buf[0]=12;
+ 180   4                                              Seg_Buf[1]=10;
+ 181   4                                              if(Count!=0)
+ 182   4                                              {
+ 183   5                                                      Seg_Buf[2]=(unsigned char)(Temperature_Max)/10%10;
+ 184   5                                                      Seg_Buf[3]=(unsigned char)(Temperature_Max)/1%10;
+ 185   5                                                      Seg_Buf[4]=11;
+ 186   5                                                      Seg_Buf[5]=(unsigned char)(Temperature_Average)/10%10;
+ 187   5                                                      Seg_Buf[6]=(unsigned char)(Temperature_Average)/1%10;
+ 188   5                                                      Seg_Point[6]=1;
+ 189   5                                                      Seg_Buf[7]=(unsigned int)(Temperature_Average*10)%10;
+ 190   5                                              }
+ 191   4                                              else
+ 192   4                                              {
+ 193   5                                                      Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=Seg_Buf[6]=Seg_Buf[7]=10;
+ 194   5                                                      Seg_Point[6]=0;
+ 195   5                                              }
+ 196   4                                      }
+ 197   3                                      else if(Echo_Show_Mode==1)//【1-湿度回显】
+ 198   3                                      {
+ 199   4                                              Seg_Buf[0]=13;
+ 200   4                                              Seg_Buf[1]=10;
+ 201   4                                              if(Count!=0)
+ 202   4                                              {
+ 203   5                                                      Seg_Buf[2]=(unsigned char)(Humidity_Max)/10%10;
+ 204   5                                                      Seg_Buf[3]=(unsigned char)(Humidity_Max)/1%10;
+ 205   5                                                      Seg_Buf[4]=11;
+ 206   5                                                      Seg_Buf[5]=(unsigned char)(Humidity_Average)/10%10;
+ 207   5                                                      Seg_Buf[6]=(unsigned char)(Humidity_Average)/1%10;
+ 208   5                                                      Seg_Point[6]=1;
+ 209   5                                                      Seg_Buf[7]=(unsigned int)(Humidity_Average*10)%10;
+ 210   5                                              }
+ 211   4                                              else
+ 212   4                                              {
+ 213   5                                                      Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=Seg_Buf[6]=Seg_Buf[7]=10;
+ 214   5                                                      Seg_Point[6]=0;
+ 215   5                                              }
+ 216   4                                      }
+ 217   3                                      else if(Echo_Show_Mode==2)//【2-时间回显】
+ 218   3                                      {
+ 219   4                                              Seg_Point[6]=0;
+ 220   4                                              Seg_Buf[0]=14;
+ 221   4                                              Seg_Buf[1]=Count/10%10;
+ 222   4                                              Seg_Buf[2]=Count/1%10;
+ 223   4                                              if(Count!=0)
+ 224   4                                              {
+ 225   5                                                      Seg_Buf[3]=Rtc_Echo[0]/16%16;
+ 226   5                                                      Seg_Buf[4]=Rtc_Echo[0]%16;
+ 227   5                                                      Seg_Buf[5]=11;
+ 228   5                                                      Seg_Buf[6]=Rtc_Echo[1]/16%16;
+ 229   5                                                      Seg_Buf[7]=Rtc_Echo[1]%16;
+ 230   5                                              }
+ 231   4                                              else
+ 232   4                                              {
+ 233   5                                                      Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=Seg_Buf[6]=Seg_Buf[7]=10;
+ 234   5                                              }
+ 235   4                                      }
+ 236   3                              break;
+ 237   3                              case 2://【2-参数界面】
+ 238   3                                      Seg_Point[6]=0;
+ 239   3                                      Seg_Buf[0]=15;
+ 240   3                                      Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=10;
+C51 COMPILER V9.54   MAIN                                                                  03/30/2025 08:28:11 PAGE 5   
+
+ 241   3                                      Seg_Buf[6]=(unsigned char)Temperature_Parameter/10%10;
+ 242   3                                      Seg_Buf[7]=(unsigned char)Temperature_Parameter/1%10;
+ 243   3                              break;
+ 244   3                      }
+ 245   2              }
+ 246   1              else
+ 247   1              {
+ 248   2                      Seg_Point[6]=0;
+ 249   2                      Seg_Buf[0]=16;
+ 250   2                      Seg_Buf[1]=10;
+ 251   2                      Seg_Buf[2]=10;
+ 252   2                      Seg_Buf[3]=(unsigned char)(Temperature)/10%10;
+ 253   2                      Seg_Buf[4]=(unsigned char)(Temperature)/1%10;
+ 254   2                      Seg_Buf[5]=11;
+ 255   2                      if(Humidity==0)
+ 256   2                      {
+ 257   3                              Seg_Buf[6]=Seg_Buf[7]=17;
+ 258   3                      }
+ 259   2                      else
+ 260   2                      {
+ 261   3                              Seg_Buf[6]=(unsigned char)(Humidity)/10%10;
+ 262   3                              Seg_Buf[7]=(unsigned char)(Humidity)/1%10;
+ 263   3                      }
+ 264   2              }
+ 265   1      }
+ 266          /*Led显示区域*/
+ 267          void Led_Proc()
+ 268          {
+ 269   1              Beeper_Buf=Relay_Buf=0;
+ 270   1              Led_Buf[0]=(Seg_Show_Mode==0)&&(T_H_Get_Mode==0)?1:0;
+ 271   1              Led_Buf[1]=(Seg_Show_Mode==1)&&(T_H_Get_Mode==0)?1:0;
+ 272   1              Led_Buf[2]=(T_H_Get_Mode==1)?1:0;
+ 273   1              
+ 274   1              Led_Buf[3]=(Temperature>Temperature_Parameter)?Led_Flash_Flag:0;
+ 275   1              Led_Buf[4]=(Humidity_Error==1)?1:0;
+ 276   1              Led_Buf[5]=(Count>=2 && Humidity>Humidity_Old && Temperature>Temperature_Old)?1:0;
+ 277   1      }
+ 278          /*定时器0区域*/
+ 279          void Timer0_Init(void)          //1毫秒@12.000MHz
+ 280          {
+ 281   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 282   1              TMOD &= 0xF0;                   //设置定时器模式
+ 283   1              TMOD |= 0x05;
+ 284   1              TL0 = 0x00;                             //设置定时初始值
+ 285   1              TH0 = 0x00;                             //设置定时初始值
+ 286   1              TF0 = 0;                                //清除TF0标志
+ 287   1              TR0 = 1;                                //定时器0开始计时
+ 288   1      }
+ 289          /*定时器1区域*/
+ 290          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 291          {
+ 292   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 293   1              TMOD &= 0x0F;                   //设置定时器模式
+ 294   1              TL1 = 0x18;                             //设置定时初始值
+ 295   1              TH1 = 0xFC;                             //设置定时初始值
+ 296   1              TF1 = 0;                                //清除TF1标志
+ 297   1              TR1 = 1;                                //定时器1开始计时
+ 298   1              ET1 = 1;                                //使能定时器1中断
+ 299   1              EA=1;
+ 300   1      }
+ 301          void Timer1_Isr(void) interrupt 3
+ 302          {
+C51 COMPILER V9.54   MAIN                                                                  03/30/2025 08:28:11 PAGE 6   
+
+ 303   1              if(++Key_Slow==20)Key_Slow=0;
+ 304   1              if(++Seg_Slow==100)Seg_Slow=0;
+ 305   1              
+ 306   1              
+ 307   1              if(++Time_1s==1000)
+ 308   1              {
+ 309   2                      TR0 = 0;
+ 310   2                      Time_1s=0;
+ 311   2                      Frequency=(TH0<<8)|TL0;
+ 312   2                      TH0=TL0=0;
+ 313   2                      TR0 = 1;
+ 314   2              }
+ 315   1              
+ 316   1              
+ 317   1              if(T_H_Get_Mode==1)
+ 318   1              {
+ 319   2                      if(++Time_3000ms==3000)
+ 320   2                      {
+ 321   3                              Time_3000ms=0;
+ 322   3                              T_H_Get_Mode=0;
+ 323   3                      }
+ 324   2              }
+ 325   1              
+ 326   1              
+ 327   1              if(Key_Press_Flag==1)
+ 328   1              {
+ 329   2                      if(++Time_2000ms==2001)
+ 330   2                      {
+ 331   3                              Time_2000ms=2000;
+ 332   3                      }
+ 333   2              }
+ 334   1              
+ 335   1              
+ 336   1              if(++Time_100ms==100)
+ 337   1              {
+ 338   2                      Time_100ms=0;
+ 339   2                      Led_Flash_Flag^=1;
+ 340   2              }
+ 341   1              
+ 342   1              
+ 343   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 344   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 345   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 346   1              Beeper(Beeper_Buf);
+ 347   1              Relay(Relay_Buf);
+ 348   1      }
+ 349          /*初始化区域*/
+ 350          void Init_Proc()
+ 351          {
+ 352   1              Sys_Init();
+ 353   1              
+ 354   1              RTC_Set(Rtc);
+ 355   1              Temperature_Read();
+ 356   1              
+ 357   1              Timer1_Init();
+ 358   1              Timer0_Init();
+ 359   1      }
+ 360          /*主函数区域*/
+ 361          void main()
+ 362          {
+ 363   1              Init_Proc();
+ 364   1              while(1)
+C51 COMPILER V9.54   MAIN                                                                  03/30/2025 08:28:11 PAGE 7   
+
+ 365   1              {
+ 366   2                      if(T_H_Get_Mode==0)
+ 367   2                              Key_Proc();
+ 368   2                      Seg_Proc();
+ 369   2                      Led_Proc();
+ 370   2              }
+ 371   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1772    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     90    ----
+   BIT SIZE         =      7    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,8 @@
+".\Objects\STARTUP.obj",
+".\Objects\main.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Seg.obj",
+".\Objects\Led.obj" 
+TO ".\Objects\No1_3S" 
+PRINT(".\Listings\No1_3S.m51") RAMSIZE(256) 

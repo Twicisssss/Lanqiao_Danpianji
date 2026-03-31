@@ -1,0 +1,71 @@
+C51 COMPILER V9.54   ULTRASOUND                                                            05/10/2025 19:03:05 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE ULTRASOUND
+OBJECT MODULE PLACED IN .\Objects\ultrasound.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Source\Driver\ultrasound.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Source\
+                    -Driver;..\Source\User) DEBUG OBJECTEXTEND PRINT(.\Listings\ultrasound.lst) OBJECT(.\Objects\ultrasound.obj)
+
+line level    source
+
+   1          #include <ultrasound.H>
+   2          void Delay12us(void)    //@12.000MHz
+   3          {
+   4   1              unsigned char data i;
+   5   1      
+   6   1              _nop_();
+   7   1              _nop_();
+   8   1              i = 38;
+   9   1              while (--i);
+  10   1      }
+  11          void us_wave_init(void)
+  12          {
+  13   1              unsigned char us;
+  14   1              EA=0;
+  15   1              for(us=0;us<8;us++)
+  16   1              {
+  17   2                      TX=1;
+  18   2                      Delay12us();
+  19   2                      TX=0;
+  20   2                      Delay12us();
+  21   2              }
+  22   1              EA=1;
+  23   1      }
+  24          unsigned char us_distance_get()
+  25          {
+  26   1              unsigned int time;
+  27   1              
+  28   1              CMOD = 0x00;            //设置定时器模式
+  29   1              CL = CH = 0;            //设置定时初始值
+  30   1              us_wave_init();
+  31   1              CR = 1;                         //定时器开始计时
+  32   1              while((RX==1)&&(CF==0))
+  33   1                      ;
+  34   1              CR = 0;
+  35   1              if(CF==0)
+  36   1              {
+  37   2                      time=(CH<<8)|CL;
+  38   2                      return (time*0.017);
+  39   2              }
+  40   1              else
+  41   1              {
+  42   2                      CF=0;
+  43   2                      return 0;
+  44   2              }
+  45   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     84    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+C51 COMPILER V9.54   ULTRASOUND                                                            05/10/2025 19:03:05 PAGE 2   
+
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

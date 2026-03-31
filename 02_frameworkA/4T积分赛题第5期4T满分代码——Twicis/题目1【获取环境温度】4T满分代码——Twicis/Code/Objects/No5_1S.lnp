@@ -1,0 +1,9 @@
+".\Objects\STARTUP.obj",
+".\Objects\main.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\onewire.obj",
+".\Objects\Seg.obj",
+".\Objects\Uart.obj" 
+TO ".\Objects\No5_1S" 
+PRINT(".\Listings\No5_1S.m51") RAMSIZE(256) 

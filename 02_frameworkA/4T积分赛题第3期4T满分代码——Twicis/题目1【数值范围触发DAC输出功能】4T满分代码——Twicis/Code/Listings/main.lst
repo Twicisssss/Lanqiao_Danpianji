@@ -1,0 +1,102 @@
+C51 COMPILER V9.54   MAIN                                                                  04/06/2025 21:34:57 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include <Init.H>
+   3          #include <Seg.H>
+   4          #include <Key.H>
+   5          #include <iic.H>
+   6          unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+   7          unsigned char Seg_Slow,Seg_Pos,Seg_Buf[8]={10,10,10,10,10,10,10,10};
+   8          unsigned char Num=0;
+   9          
+  10          void Key_Proc()
+  11          {
+  12   1              if(Key_Slow)return;
+  13   1              Key_Slow=1;
+  14   1              
+  15   1              Key_Val=Key_Read();
+  16   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  17   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  18   1              Key_Old=Key_Val;
+  19   1              
+  20   1              if(Key_Down==4)
+  21   1              {
+  22   2                      if(++Num==100)Num=99;
+  23   2              }
+  24   1              else if(Key_Down==5)
+  25   1              {
+  26   2                      if(--Num==255)Num=0;
+  27   2              }
+  28   1      }
+  29          void Seg_Proc()
+  30          {
+  31   1              if(Seg_Slow)return;
+  32   1              Seg_Slow=1;
+  33   1              
+  34   1              if(Num!=0 && Num%6==0)
+  35   1                      DA_Write(3*51);
+  36   1              else
+  37   1                      DA_Write(1*51);
+  38   1              
+  39   1              Seg_Buf[6]=Num>=10?Num/10%10:10;
+  40   1              Seg_Buf[7]=Num/1%10;
+  41   1              
+  42   1              
+  43   1      }
+  44          void Timer1_Init(void)          //1毫秒@12.000MHz
+  45          {
+  46   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+  47   1              TMOD &= 0x0F;                   //设置定时器模式
+  48   1              TL1 = 0x18;                             //设置定时初始值
+  49   1              TH1 = 0xFC;                             //设置定时初始值
+  50   1              TF1 = 0;                                //清除TF1标志
+  51   1              TR1 = 1;                                //定时器1开始计时
+  52   1              ET1 = 1;                                //使能定时器1中断
+  53   1              EA=1;
+  54   1      }
+C51 COMPILER V9.54   MAIN                                                                  04/06/2025 21:34:57 PAGE 2   
+
+  55          void Timer1_Isr(void) interrupt 3
+  56          {
+  57   1              if(++Key_Slow==20)Key_Slow=0;
+  58   1              if(++Seg_Slow==100)Seg_Slow=0;
+  59   1              if(++Seg_Pos==8)Seg_Pos=0;
+  60   1              if(Seg_Buf[Seg_Pos]>20)
+  61   1                      Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos]-',',1);
+  62   1              else
+  63   1                      Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],0);
+  64   1      }
+  65          void main()
+  66          {
+  67   1              Sys_Init();
+  68   1              Timer1_Init();
+  69   1              while(1)
+  70   1              {
+  71   2                      Key_Proc();
+  72   2                      Seg_Proc();
+  73   2              }
+  74   1      }
+  75          
+  76          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    289    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     16    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

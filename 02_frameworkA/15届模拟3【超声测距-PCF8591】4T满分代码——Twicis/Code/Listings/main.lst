@@ -1,0 +1,257 @@
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:12:29 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <Ultrasound.H>
+   8          #include <iic.H>
+   9          /*变量声明区域*/
+  10          idata unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+  11          idata unsigned char Seg_Slow,Seg_Pos;
+  12          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10},Seg_Point[8]={0,0,0,0,0,0,0,0};
+  13          idata unsigned char Beeper_Buf=0,Relay_Buf=0,Led_Buf[8]={0,0,0,0,0,0,0,0};
+  14          idata unsigned char i;
+  15          
+  16          idata unsigned char Seg_Show_Mode=0;//【0-测距】【1-参数】【2-记录】
+  17          idata unsigned char Parameter_Mode=0;//【0-按键模式】【1-旋钮模式】
+  18          idata unsigned char US_Distance;
+  19          idata unsigned char Distance_Parameter[2]={60,10};//【0-上限参数】【1-下限参数】
+  20          idata bit Knob_Parameter_Index;
+  21          idata unsigned char Alarms_Count;
+  22          idata bit Alarm_Flag;
+  23          
+  24          idata float ADC_Rb2_Voltage;
+  25          idata unsigned char Voltage_Equal_Value;
+  26          
+  27          idata unsigned char Time_100ms;
+  28          idata bit Time_100ms_Flag;
+  29          /*按键控制区域*/
+  30          void Key_Proc()
+  31          {
+  32   1              if(Key_Slow)return;
+  33   1              Key_Slow=1;
+  34   1              
+  35   1              Key_Val=Key_Read();
+  36   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  37   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  38   1              Key_Old=Key_Val;
+  39   1              
+  40   1              switch(Key_Down)
+  41   1              {
+  42   2                      case 4:
+  43   2                              if(++Seg_Show_Mode==3)Seg_Show_Mode=0;
+  44   2                      break;
+  45   2                      case 5:
+  46   2                              if(Seg_Show_Mode==1)
+  47   2                              {
+  48   3                                      if(++Parameter_Mode==2)Parameter_Mode=0;
+  49   3                              }
+  50   2                              else if(Seg_Show_Mode==2)
+  51   2                              {
+  52   3                                      Alarms_Count=0;
+  53   3                              }
+  54   2                      break;
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:12:29 PAGE 2   
+
+  55   2                      case 9://上限
+  56   2                              if(Seg_Show_Mode==1)//【1-参数】
+  57   2                              {
+  58   3                                      if(Parameter_Mode==0)//【0-按键模式】
+  59   3                                      {
+  60   4                                              Distance_Parameter[0]+=10;
+  61   4                                              if(Distance_Parameter[0]==100)Distance_Parameter[0]=50;
+  62   4                                      }
+  63   3                                      else//【1-旋钮模式】
+  64   3                                      {
+  65   4                                              Knob_Parameter_Index=0;
+  66   4                                      }
+  67   3                              }
+  68   2                      break;
+  69   2                      case 8://下限
+  70   2                              if(Seg_Show_Mode==1)//【1-参数】
+  71   2                              {
+  72   3                                      if(Parameter_Mode==0)//【0-按键模式】
+  73   3                                      {
+  74   4                                              Distance_Parameter[1]+=10;
+  75   4                                              if(Distance_Parameter[1]==50)Distance_Parameter[1]=0;
+  76   4                                      }
+  77   3                                      else//【1-旋钮模式】
+  78   3                                      {
+  79   4                                              Knob_Parameter_Index=1;
+  80   4                                      }
+  81   3                              }
+  82   2                      break;
+  83   2              }
+  84   1      }
+  85          /*数码管控制区域*/
+  86          void Seg_Proc()
+  87          {
+  88   1              if(Seg_Slow)return;
+  89   1              Seg_Slow=1;
+  90   1              
+  91   1              
+  92   1              US_Distance=US_Distance_Get();
+  93   1              if(Alarm_Flag==0)
+  94   1              {
+  95   2                      if(US_Distance>Distance_Parameter[0] || US_Distance<Distance_Parameter[1])
+  96   2                      {
+  97   3                              Alarm_Flag=1;
+  98   3                              Alarms_Count++;
+  99   3                      }
+ 100   2              }
+ 101   1              else
+ 102   1              {
+ 103   2                      if(US_Distance>=Distance_Parameter[1] && US_Distance<=Distance_Parameter[0])
+ 104   2                              Alarm_Flag=0;
+ 105   2              }
+ 106   1              
+ 107   1              
+ 108   1              ADC_Rb2_Voltage=AD_Read(0x03)/51.0;
+ 109   1              if(Parameter_Mode==1)
+ 110   1              {
+ 111   2                      if(Knob_Parameter_Index==0)
+ 112   2                      {
+ 113   3      //                      if(ADC_Rb2_Voltage>=0.0 && ADC_Rb2_Voltage<1.0)
+ 114   3      //                              Distance_Parameter[0]=50;
+ 115   3      //                      else if(ADC_Rb2_Voltage>=1.0 && ADC_Rb2_Voltage<2.0)
+ 116   3      //                              Distance_Parameter[0]=60;
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:12:29 PAGE 3   
+
+ 117   3      //                      else if(ADC_Rb2_Voltage>=2.0 && ADC_Rb2_Voltage<3.0)
+ 118   3      //                              Distance_Parameter[0]=70;
+ 119   3      //                      else if(ADC_Rb2_Voltage>=3.0 && ADC_Rb2_Voltage<4.0)
+ 120   3      //                              Distance_Parameter[0]=80;
+ 121   3      //                      else if(ADC_Rb2_Voltage>=4.0 && ADC_Rb2_Voltage<=5.0)
+ 122   3      //                              Distance_Parameter[0]=90;
+ 123   3                              Voltage_Equal_Value=(unsigned char)ADC_Rb2_Voltage * 10;
+ 124   3                              if (Voltage_Equal_Value >= 50)
+ 125   3                                      Voltage_Equal_Value = 40;
+ 126   3                              Distance_Parameter[0] = 50 + Voltage_Equal_Value;
+ 127   3                      }
+ 128   2                      else
+ 129   2                      {
+ 130   3                              Voltage_Equal_Value=(unsigned char)ADC_Rb2_Voltage * 10;
+ 131   3                              if (Voltage_Equal_Value >= 50)
+ 132   3                                      Voltage_Equal_Value = 40;
+ 133   3                              Distance_Parameter[1] = 0 + Voltage_Equal_Value;
+ 134   3                      }
+ 135   2              }
+ 136   1              
+ 137   1              switch(Seg_Show_Mode)
+ 138   1              {
+ 139   2                      case 0:
+ 140   2                              Seg_Buf[0]=12;
+ 141   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=10;
+ 142   2                              Seg_Buf[5]=US_Distance/100%10;
+ 143   2                              Seg_Buf[6]=US_Distance/10%10;
+ 144   2                              Seg_Buf[7]=US_Distance/1%10;
+ 145   2                              for(i=5;i<7;i++)
+ 146   2                              {
+ 147   3                                      if(Seg_Buf[i]!=0)break;
+ 148   3                                      Seg_Buf[i]=10;
+ 149   3                              }
+ 150   2                      break;
+ 151   2                      case 1:
+ 152   2                              Seg_Buf[0]=13;
+ 153   2                              Seg_Buf[1]=Parameter_Mode+1;
+ 154   2                              Seg_Buf[2]=10;
+ 155   2                              Seg_Buf[3]=Distance_Parameter[1]/10%10;
+ 156   2                              Seg_Buf[4]=Distance_Parameter[1]/1%10;
+ 157   2                              Seg_Buf[5]=11;
+ 158   2                              Seg_Buf[6]=Distance_Parameter[0]/10%10;
+ 159   2                              Seg_Buf[7]=Distance_Parameter[0]/1%10;
+ 160   2                      break;
+ 161   2                      case 2:
+ 162   2                              Seg_Buf[0]=14;
+ 163   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=Seg_Buf[6]=10;
+ 164   2                      if(Alarms_Count<10)
+ 165   2                              Seg_Buf[7]=Alarms_Count;
+ 166   2                      else
+ 167   2                              Seg_Buf[7]=11;
+ 168   2                      break;
+ 169   2              }
+ 170   1      }
+ 171          /*Led控制区域*/
+ 172          void Led_Proc()
+ 173          {
+ 174   1              Beeper_Buf=Relay_Buf=0;
+ 175   1              Led_Buf[0]=Seg_Show_Mode==0?1:0;
+ 176   1              Led_Buf[1]=Seg_Show_Mode==1?1:0;
+ 177   1              Led_Buf[2]=Seg_Show_Mode==2?1:0;
+ 178   1              
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:12:29 PAGE 4   
+
+ 179   1              Led_Buf[7]=Alarm_Flag==0?1:Time_100ms_Flag;;
+ 180   1      }
+ 181          /*定时器1区域*/
+ 182          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 183          {
+ 184   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 185   1              TMOD &= 0x0F;                   //设置定时器模式
+ 186   1              TL1 = 0x18;                             //设置定时初始值
+ 187   1              TH1 = 0xFC;                             //设置定时初始值
+ 188   1              TF1 = 0;                                //清除TF1标志
+ 189   1              TR1 = 1;                                //定时器1开始计时
+ 190   1              ET1 = 1;                                //使能定时器1中断
+ 191   1              EA=1;
+ 192   1      }
+ 193          void Timer1_Isr(void) interrupt 3
+ 194          {
+ 195   1              if(++Key_Slow==20)Key_Slow=0;
+ 196   1              if(++Seg_Slow==90)Seg_Slow=0;
+ 197   1              
+ 198   1              if(++Time_100ms==100)
+ 199   1              {
+ 200   2                      Time_100ms=0;
+ 201   2                      Time_100ms_Flag^=1;
+ 202   2              }
+ 203   1              
+ 204   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 205   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 206   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 207   1              Beeper(Beeper_Buf);
+ 208   1              Relay(Relay_Buf);
+ 209   1      }
+ 210          /*初始化区域*/
+ 211          void Init_Proc()
+ 212          {
+ 213   1              Sys_Init();
+ 214   1              
+ 215   1              Timer1_Init();
+ 216   1      }
+ 217          /*主函数区域*/
+ 218          void main()
+ 219          {
+ 220   1              Init_Proc();
+ 221   1              while(1)
+ 222   1              {
+ 223   2                      Key_Proc();
+ 224   2                      Seg_Proc();
+ 225   2                      Led_Proc();
+ 226   2              }
+ 227   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    783    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     46    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

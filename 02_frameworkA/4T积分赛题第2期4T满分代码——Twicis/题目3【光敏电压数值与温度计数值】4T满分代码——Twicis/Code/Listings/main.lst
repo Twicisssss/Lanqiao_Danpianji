@@ -1,0 +1,167 @@
+C51 COMPILER V9.54   MAIN                                                                  04/07/2025 09:59:25 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include <Init.H>
+   3          #include <Seg.H>
+   4          #include <Key.H>
+   5          #include <ds1302.H>
+   6          #include <onewire.H>
+   7          #include <iic.H>
+   8          unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+   9          unsigned char Seg_Slow,Seg_Pos,Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  10          
+  11          unsigned char Seg_Show_Mode=0;//【0-时间】【1-数据】【2-查询】
+  12          bit L_T_Get_Mode=0;//【0-自动】【1-手动】
+  13          
+  14          unsigned char Rtc[3]={23,59,57,};
+  15          float ADC_Light_Voltage;
+  16          float Temperature;
+  17          float ADC_Light_Voltage_Save;
+  18          float Temperature_Save;
+  19          
+  20          void Key_Proc()
+  21          {
+  22   1              if(Key_Slow)return;
+  23   1              Key_Slow=1;
+  24   1              
+  25   1              Key_Val=Key_Read();
+  26   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  27   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  28   1              Key_Old=Key_Val;
+  29   1              
+  30   1              if(Key_Down==4)
+  31   1              {
+  32   2                      if(++Seg_Show_Mode==3)Seg_Show_Mode=0;
+  33   2              }
+  34   1              else if(Key_Down==8)//手动采集按键，按下S8按键可以手动采集光照与温度数值。
+  35   1              {
+  36   2                      L_T_Get_Mode=1;
+  37   2              }
+  38   1      }
+  39          void Seg_Proc()
+  40          {
+  41   1              if(Seg_Slow)return;
+  42   1              Seg_Slow=1;
+  43   1              
+  44   1              RTC_Read(Rtc);
+  45   1              Temperature=Temperature_Read();
+  46   1              ADC_Light_Voltage=AD_Read(0x01)/51.0;
+  47   1              
+  48   1              if(L_T_Get_Mode==0)
+  49   1              {
+  50   2                      if(Rtc[2]==0)
+  51   2                      {
+  52   3                              Temperature_Save=Temperature;
+  53   3                              ADC_Light_Voltage_Save=ADC_Light_Voltage;
+  54   3                      }
+C51 COMPILER V9.54   MAIN                                                                  04/07/2025 09:59:25 PAGE 2   
+
+  55   2              }
+  56   1              else
+  57   1              {
+  58   2                      Temperature_Save=Temperature;
+  59   2                      ADC_Light_Voltage_Save=ADC_Light_Voltage;
+  60   2                      L_T_Get_Mode=0;
+  61   2              }
+  62   1              
+  63   1              
+  64   1              switch(Seg_Show_Mode)
+  65   1              {
+  66   2                      case 0:
+  67   2                              Seg_Buf[0]=Rtc[0]/10%10;
+  68   2                              Seg_Buf[1]=Rtc[0]%10;
+  69   2                              Seg_Buf[2]=11;
+  70   2                              Seg_Buf[3]=Rtc[1]/10%10;
+  71   2                              Seg_Buf[4]=Rtc[1]%10;
+  72   2                              Seg_Buf[5]=11;
+  73   2                              Seg_Buf[6]=Rtc[2]/10%10;
+  74   2                              Seg_Buf[7]=Rtc[2]%10;
+  75   2                      break;
+  76   2                      case 1:
+  77   2                              ;
+  78   2                              Seg_Buf[0]=(unsigned char)(ADC_Light_Voltage)+',';
+  79   2                              Seg_Buf[1]=(unsigned char)(ADC_Light_Voltage*10)%10;
+  80   2                              Seg_Buf[2]=(unsigned int)(ADC_Light_Voltage*100)%10;
+  81   2                              Seg_Buf[3]=10;
+  82   2                              Seg_Buf[4]=Temperature>=10?(unsigned char)(Temperature)/10%10:10;
+  83   2                              Seg_Buf[5]=(unsigned char)(Temperature)/1%10+',';
+  84   2                              Seg_Buf[6]=(unsigned int)(Temperature*10)%10;
+  85   2                              Seg_Buf[7]=(unsigned int)(Temperature*100)%10;
+  86   2                      break;
+  87   2                      case 2:
+  88   2                              Seg_Buf[0]=12;
+  89   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=Seg_Buf[6]=Seg_Buf[7]=10;
+  90   2                              if(ADC_Light_Voltage_Save!=0)
+  91   2                              {
+  92   3                                      Seg_Buf[2]=(unsigned char)(ADC_Light_Voltage_Save)+',';
+  93   3                                      Seg_Buf[3]=(unsigned char)(ADC_Light_Voltage_Save*10)%10;
+  94   3                              }
+  95   2      
+  96   2                              if(Temperature_Save!=0)
+  97   2                              {
+  98   3                                      Seg_Buf[5]=Temperature>=10?(unsigned char)(Temperature_Save)/10%10:10;
+  99   3                                      Seg_Buf[6]=(unsigned char)(Temperature_Save)/1%10+',';
+ 100   3                                      Seg_Buf[7]=(unsigned int)(Temperature_Save*10)%10;
+ 101   3                              }
+ 102   2                      break;
+ 103   2              }
+ 104   1      }
+ 105          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 106          {
+ 107   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 108   1              TMOD &= 0x0F;                   //设置定时器模式
+ 109   1              TL1 = 0x18;                             //设置定时初始值
+ 110   1              TH1 = 0xFC;                             //设置定时初始值
+ 111   1              TF1 = 0;                                //清除TF1标志
+ 112   1              TR1 = 1;                                //定时器1开始计时
+ 113   1              ET1 = 1;                                //使能定时器1中断
+ 114   1              EA=1;
+ 115   1      }
+ 116          void Timer1_Isr(void) interrupt 3
+C51 COMPILER V9.54   MAIN                                                                  04/07/2025 09:59:25 PAGE 3   
+
+ 117          {
+ 118   1              if(++Key_Slow==20)Key_Slow=0;
+ 119   1              if(++Seg_Slow==100)Seg_Slow=0;
+ 120   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 121   1              if(Seg_Buf[Seg_Pos]>20)
+ 122   1                      Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos]-',',1);
+ 123   1              else
+ 124   1                      Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],0);
+ 125   1      }
+ 126          void main()
+ 127          {
+ 128   1              RTC_Set(Rtc);
+ 129   1              while(Temperature_Read()==85);
+ 130   1              Sys_Init();
+ 131   1              Timer1_Init();
+ 132   1              while(1)
+ 133   1              {
+ 134   2                      Key_Proc();
+ 135   2                      Seg_Proc();
+ 136   2              }
+ 137   1      }
+ 138          
+ 139          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    849    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     35    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,386 @@
+C51 COMPILER V9.54   MAIN                                                                  03/14/2025 22:10:58 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*Í·ÎÄ¼þÒýÓÃÇøÓò*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <iic.H>
+   8          /*±äÁ¿ÉùÃ÷ÇøÓò*/
+   9          unsigned char Key_Slow;
+  10          unsigned char Key_Val,Key_Old,Key_Down,Key_Up;
+  11          unsigned char Seg_Slow;
+  12          unsigned char Seg_Pos;
+  13          unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  14          unsigned char Seg_Point[8]={0,0,0,0,0,0,0,0};
+  15          unsigned char Led_Buf[8]={0,0,0,0,0,0,0,0};
+  16          
+  17          unsigned char Seg_Show_Mode=0;//¡¾0-ÆµÂÊÏÔÊ¾¡¿¡¢¡¾1-ÖÜÆÚÏÔÊ¾¡¿¡¢¡¾2-µçÑ¹ÏÔÊ¾¡¿
+  18          unsigned char V_Channel_Mode=1;//¡¾1-¹âÃôµç×è¡¿¡¢¡¾3-µçÑ¹²É¼¯¡¿
+  19          
+  20          unsigned int Time_1000ms=0;
+  21          unsigned int Frequency;//NE555ÆµÂÊ
+  22          unsigned int Frequency_Save_Data;
+  23          unsigned int Cycle_Xus;//ÖÜÆÚ
+  24          
+  25          unsigned char AIN1_AD_Read_Data;//¹âÃôµç×è
+  26          unsigned char AIN3_AD_Read_Data;//µçÑ¹²É¼¯
+  27          float AIN1_Light;
+  28          float AIN3_Voltage;
+  29          float Voltage_Save_Data;
+  30          
+  31          unsigned char Key7_Keep_Flag=0;
+  32          bit Led_ON_OFF_Mode=1;
+  33          unsigned int Key7_Keep_1s=0;
+  34          
+  35          /*°´¼ü¿ØÖÆÇøÓò*/
+  36          void Key_Proc()
+  37          {
+  38   1              if(Key_Slow)return;
+  39   1              Key_Slow=1;
+  40   1              
+  41   1              Key_Val=Key_Read();
+  42   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  43   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  44   1              Key_Old=Key_Val;
+  45   1              
+  46   1      //³¤°´S7°´¼ü³¬¹ý1ÃëºóËÉ¿ª°´¼ü£¬ÅÐ¶¨ÎªS7³¤°´¼ü¹¦ÄÜ£¬½ûÓÃLEDÖ¸Ê¾µÆ¹¦ÄÜ£¬ËùÓÐLED´¦ÓÚÏ¨Ãð×´Ì¬£»ÔÙ´Î³¤°´S7³¬¹ý1
+             -ÃëºóËÉ¿ª°´¼ü£¬»Ö¸´LEDÖ¸Ê¾µÆ¹¦ÄÜ¡£
+  47   1              if(Key_Old==7)
+  48   1              {
+  49   2                      if(Key7_Keep_Flag!=2)
+  50   2                              {Key7_Keep_Flag=1;}
+  51   2                      else
+  52   2                              {Key7_Keep_Flag=2;}
+  53   2              }
+C51 COMPILER V9.54   MAIN                                                                  03/14/2025 22:10:58 PAGE 2   
+
+  54   1              else
+  55   1              {
+  56   2                      Key7_Keep_Flag=0;
+  57   2                      Key7_Keep_1s=0;
+  58   2              }
+  59   1              
+  60   1              switch(Key_Down)
+  61   1              {
+  62   2                      case 4://S4£º¡°½çÃæÇÐ»»¡±°´¼ü£¬°´ÏÂÇÐ»»¡¾0-ÆµÂÊÏÔÊ¾¡¿¡¢¡¾1-ÖÜÆÚÏÔÊ¾¡¿¡¢¡¾2-µçÑ¹ÏÔÊ¾¡¿½çÃæ¡£±¸×¢£ºÃ¿´Î´ÓÖ
+             -ÜÆÚ½çÃæ½øÈëµçÑ¹½çÃæºó£¬¾ùÎªÍ¨µÀ1µçÑ¹ÏÔÊ¾½çÃæ¡£
+  63   2                              if(++Seg_Show_Mode==3)Seg_Show_Mode=0;
+  64   2                              if(Seg_Show_Mode==2)V_Channel_Mode=1;
+  65   2                      break;
+  66   2                      case 5://S5£º¡°µçÑ¹Í¨µÀÇÐ»»¡±°´¼ü£¬ÔÚµçÑ¹½çÃæÏÂ£¬°´ÏÂÇÐ»»ÏÔÊ¾Í¨µÀ1ºÍÍ¨µÀ3µçÑ¹²âÁ¿½á¹û¡£
+  67   2                              if(V_Channel_Mode==1)V_Channel_Mode=3;
+  68   2                              else if(V_Channel_Mode==3)V_Channel_Mode=1;
+  69   2                      break;
+  70   2                      case 6://S6£º¡°Í¨µÀ3µçÑ¹»º´æ¡±°´¼ü£¬°´ÏÂ±£´æµ±Ç°²É¼¯µ½µÄÍ¨µÀ3µçÑ¹Êý¾Ý¡£ÔÚÈÎºÎ½çÃæÏÂ¾ùÓÐÐ§¡£
+  71   2                              Voltage_Save_Data=AIN3_Voltage;
+  72   2                      break;
+  73   2                      case 7://S7£º¡°ÆµÂÊ»º´æ¡±°´¼ü£¬°´ÏÂ±£´æµ±Ç°²É¼¯µ½µÄÆµÂÊÊý¾Ý¡£ÔÚÈÎºÎ½çÃæÏÂ¾ùÓÐÐ§¡£
+  74   2                              Frequency_Save_Data=Frequency;
+  75   2                      break;
+  76   2              }
+  77   1      }
+  78          /*ÊýÂë¹ÜÏÔÊ¾ÇøÓò*/
+  79          void Seg_Proc()
+  80          {
+  81   1              unsigned char i;
+  82   1              if(Seg_Slow)return;
+  83   1              Seg_Slow=1;
+  84   1              
+  85   1              AIN1_AD_Read_Data=AD_Read(0x03);
+  86   1              AIN3_AD_Read_Data=AD_Read(0x01);
+  87   1              AIN1_Light=AIN1_AD_Read_Data/51.0;
+  88   1              AIN3_Voltage=AIN3_AD_Read_Data/51.0;
+  89   1              
+  90   1              switch(Seg_Show_Mode)
+  91   1              {
+  92   2                      case 0:
+  93   2                              Seg_Point[5]=0;
+  94   2                              Seg_Buf[0]=11;//F
+  95   2                              if(Frequency>=0 && Frequency<10)
+  96   2                              {
+  97   3                                      for(i=1;i<=6;i++)
+  98   3                                              {Seg_Buf[i]=10;}
+  99   3                                      Seg_Buf[7]=Frequency/1%10;
+ 100   3                              }
+ 101   2                              else if(Frequency>=10 && Frequency<100)
+ 102   2                              {
+ 103   3                                      for(i=1;i<=5;i++)
+ 104   3                                              {Seg_Buf[i]=10;}
+ 105   3                                      Seg_Buf[6]=Frequency/10%10;
+ 106   3                                      Seg_Buf[7]=Frequency/1%10;
+ 107   3                              }
+ 108   2                              else if(Frequency>=100 && Frequency<1000)
+ 109   2                              {
+ 110   3                                      for(i=1;i<=4;i++)
+ 111   3                                              {Seg_Buf[i]=10;}
+ 112   3                                      Seg_Buf[5]=Frequency/100%10;
+ 113   3                                      Seg_Buf[6]=Frequency/10%10;
+ 114   3                                      Seg_Buf[7]=Frequency/1%10;
+C51 COMPILER V9.54   MAIN                                                                  03/14/2025 22:10:58 PAGE 3   
+
+ 115   3                              }
+ 116   2                              else if(Frequency>=1000 && Frequency<10000)
+ 117   2                              {
+ 118   3                                      for(i=1;i<=3;i++)
+ 119   3                                              {Seg_Buf[i]=10;}
+ 120   3                                      Seg_Buf[4]=Frequency/1000%10;
+ 121   3                                      Seg_Buf[5]=Frequency/100%10;
+ 122   3                                      Seg_Buf[6]=Frequency/10%10;
+ 123   3                                      Seg_Buf[7]=Frequency/1%10;
+ 124   3                              }
+ 125   2                              else if(Frequency>=10000 && Frequency<100000)
+ 126   2                              {
+ 127   3                                      for(i=1;i<=2;i++)
+ 128   3                                              {Seg_Buf[i]=10;}
+ 129   3                                      Seg_Buf[3]=Frequency/10000%10;
+ 130   3                                      Seg_Buf[4]=Frequency/1000%10;
+ 131   3                                      Seg_Buf[5]=Frequency/100%10;
+ 132   3                                      Seg_Buf[6]=Frequency/10%10;
+ 133   3                                      Seg_Buf[7]=Frequency/1%10;
+ 134   3                              }
+ 135   2                              else if(Frequency>=100000 && Frequency<1000000)
+ 136   2                              {
+ 137   3                                      Seg_Buf[1]=10;
+ 138   3                                      Seg_Buf[2]=Frequency/100000%10;
+ 139   3                                      Seg_Buf[3]=Frequency/10000%10;
+ 140   3                                      Seg_Buf[4]=Frequency/1000%10;
+ 141   3                                      Seg_Buf[5]=Frequency/100%10;
+ 142   3                                      Seg_Buf[6]=Frequency/10%10;
+ 143   3                                      Seg_Buf[7]=Frequency/1%10;
+ 144   3                              }
+ 145   2                              else if(Frequency>=1000000 && Frequency<10000000)
+ 146   2                              {
+ 147   3                                      Seg_Buf[1]=Frequency/1000000%10;
+ 148   3                                      Seg_Buf[2]=Frequency/100000%10;
+ 149   3                                      Seg_Buf[3]=Frequency/10000%10;
+ 150   3                                      Seg_Buf[4]=Frequency/1000%10;
+ 151   3                                      Seg_Buf[5]=Frequency/100%10;
+ 152   3                                      Seg_Buf[6]=Frequency/10%10;
+ 153   3                                      Seg_Buf[7]=Frequency/1%10;
+ 154   3                              }
+ 155   2                              else
+ 156   2                              {
+ 157   3                                      for(i=1;i<=7;i++)
+ 158   3                                              {Seg_Buf[i]=10;}
+ 159   3                              }
+ 160   2                      break;
+ 161   2                      case 1:
+ 162   2                              Seg_Buf[0]=12;//n
+ 163   2                              if(Cycle_Xus>=0 && Cycle_Xus<10)
+ 164   2                              {
+ 165   3                                      for(i=1;i<=6;i++)
+ 166   3                                              {Seg_Buf[i]=10;}
+ 167   3                                      Seg_Buf[7]=Cycle_Xus/1%10;
+ 168   3                              }
+ 169   2                              else if(Cycle_Xus>=10 && Cycle_Xus<100)
+ 170   2                              {
+ 171   3                                      for(i=1;i<=5;i++)
+ 172   3                                              {Seg_Buf[i]=10;}
+ 173   3                                      Seg_Buf[6]=Cycle_Xus/10%10;
+ 174   3                                      Seg_Buf[7]=Cycle_Xus/1%10;
+ 175   3                              }
+ 176   2                              else if(Cycle_Xus>=100 && Cycle_Xus<1000)
+C51 COMPILER V9.54   MAIN                                                                  03/14/2025 22:10:58 PAGE 4   
+
+ 177   2                              {
+ 178   3                                      for(i=1;i<=4;i++)
+ 179   3                                              {Seg_Buf[i]=10;}
+ 180   3                                      Seg_Buf[5]=Cycle_Xus/100%10;
+ 181   3                                      Seg_Buf[6]=Cycle_Xus/10%10;
+ 182   3                                      Seg_Buf[7]=Cycle_Xus/1%10;
+ 183   3                              }
+ 184   2                              else if(Cycle_Xus>=1000 && Cycle_Xus<10000)
+ 185   2                              {
+ 186   3                                      for(i=1;i<=3;i++)
+ 187   3                                              {Seg_Buf[i]=10;}
+ 188   3                                      Seg_Buf[4]=Cycle_Xus/1000%10;
+ 189   3                                      Seg_Buf[5]=Cycle_Xus/100%10;
+ 190   3                                      Seg_Buf[6]=Cycle_Xus/10%10;
+ 191   3                                      Seg_Buf[7]=Cycle_Xus/1%10;
+ 192   3                              }
+ 193   2                              else if(Cycle_Xus>=10000 && Cycle_Xus<100000)
+ 194   2                              {
+ 195   3                                      for(i=1;i<=2;i++)
+ 196   3                                              {Seg_Buf[i]=10;}
+ 197   3                                      Seg_Buf[3]=Cycle_Xus/10000%10;
+ 198   3                                      Seg_Buf[4]=Cycle_Xus/1000%10;
+ 199   3                                      Seg_Buf[5]=Cycle_Xus/100%10;
+ 200   3                                      Seg_Buf[6]=Cycle_Xus/10%10;
+ 201   3                                      Seg_Buf[7]=Cycle_Xus/1%10;
+ 202   3                              }
+ 203   2                              else if(Cycle_Xus>=100000 && Cycle_Xus<1000000)
+ 204   2                              {
+ 205   3                                      Seg_Buf[1]=10;
+ 206   3                                      Seg_Buf[2]=Cycle_Xus/100000%10;
+ 207   3                                      Seg_Buf[3]=Cycle_Xus/10000%10;
+ 208   3                                      Seg_Buf[4]=Cycle_Xus/1000%10;
+ 209   3                                      Seg_Buf[5]=Cycle_Xus/100%10;
+ 210   3                                      Seg_Buf[6]=Cycle_Xus/10%10;
+ 211   3                                      Seg_Buf[7]=Cycle_Xus/1%10;
+ 212   3                              }
+ 213   2                              else if(Cycle_Xus>=1000000 && Cycle_Xus<10000000)
+ 214   2                              {
+ 215   3                                      Seg_Buf[1]=Cycle_Xus/1000000%10;
+ 216   3                                      Seg_Buf[2]=Cycle_Xus/100000%10;
+ 217   3                                      Seg_Buf[3]=Cycle_Xus/10000%10;
+ 218   3                                      Seg_Buf[4]=Cycle_Xus/1000%10;
+ 219   3                                      Seg_Buf[5]=Cycle_Xus/100%10;
+ 220   3                                      Seg_Buf[6]=Cycle_Xus/10%10;
+ 221   3                                      Seg_Buf[7]=Cycle_Xus/1%10;
+ 222   3                              }
+ 223   2                              else
+ 224   2                              {
+ 225   3                                      for(i=1;i<=7;i++)
+ 226   3                                              {Seg_Buf[i]=10;}
+ 227   3                              }
+ 228   2                      break;
+ 229   2                      case 2:
+ 230   2                              Seg_Buf[0]=13;//U
+ 231   2                              Seg_Buf[1]=14;//-
+ 232   2                              Seg_Buf[2]=V_Channel_Mode;
+ 233   2                              Seg_Buf[3]=10;
+ 234   2                              Seg_Buf[4]=10;
+ 235   2                              if(V_Channel_Mode==1)//¡¾1-¹âÃôµç×è¡¿
+ 236   2                              {
+ 237   3                              Seg_Buf[5]=(unsigned int)(AIN1_Light)%10;
+ 238   3                              Seg_Point[5]=1;
+C51 COMPILER V9.54   MAIN                                                                  03/14/2025 22:10:58 PAGE 5   
+
+ 239   3                              Seg_Buf[6]=(unsigned int)(AIN1_Light*10)%10;
+ 240   3                              Seg_Buf[7]=(unsigned int)(AIN1_Light*100)%10;
+ 241   3                              }
+ 242   2                              else if(V_Channel_Mode==3)//¡¾3-µçÑ¹²É¼¯¡¿
+ 243   2                              {
+ 244   3                              Seg_Buf[5]=(unsigned int)AIN3_Voltage;
+ 245   3                              Seg_Point[5]=1;
+ 246   3                              Seg_Buf[6]=(unsigned int)(AIN3_Voltage*10)%10;
+ 247   3                              Seg_Buf[7]=(unsigned int)(AIN3_Voltage*100)%10;
+ 248   3                              }
+ 249   2                      break;
+ 250   2              }
+ 251   1      }
+ 252          /*LedÏÔÊ¾ÇøÓò*/
+ 253          void Led_Proc()
+ 254          {
+ 255   1      /*
+ 256   1      1) L1:Í¨µÀ3µÄÊµÊ±µçÑ¹Êý¾Ý´óÓÚ»º´æµçÑ¹Êý¾Ý£¬Ö¸Ê¾µÆL1µãÁÁ£¬·ñÔòÏ¨Ãð¡£
+ 257   1      2) L2:ÊµÊ±ÆµÂÊÖµ´óÓÚ»º´æÆµÂÊÊý¾Ý£¬Ö¸Ê¾µÆL2µãÁÁ£¬·ñÔòÏ¨Ãð¡£
+ 258   1      3) L3:´¦ÓÚÆµÂÊ½çÃæ£¬Ö¸Ê¾µÆL3µãÁÁ£¬·ñÔòÏ¨Ãð¡£
+ 259   1      4) L4:´¦ÓÚÖÜÆÚ½çÃæ£¬Ö¸Ê¾µÆL4µãÁÁ£¬·ñÔòÏ¨Ãð¡£
+ 260   1      5) L5:´¦ÓÚµçÑ¹½çÃæ£¬Ö¸Ê¾µÆL5µãÁÁ£¬·ñÔòÏ¨Ãð¡£
+ 261   1      6) L6¡¢L7¡¢L8£¬´¦ÓÚÏ¨Ãð×´Ì¬¡£
+ 262   1      */      
+ 263   1              unsigned char i;
+ 264   1              if(Led_ON_OFF_Mode==1)
+ 265   1              {
+ 266   2                      Led_Buf[0]=(AIN3_Voltage>Voltage_Save_Data)?1:0;
+ 267   2                      Led_Buf[1]=(Frequency>Frequency_Save_Data)?1:0;
+ 268   2                      Led_Buf[2]=(Seg_Show_Mode==0)?1:0;
+ 269   2                      Led_Buf[3]=(Seg_Show_Mode==1)?1:0;
+ 270   2                      Led_Buf[4]=(Seg_Show_Mode==2)?1:0;
+ 271   2                      Led_Buf[5]=0;
+ 272   2                      Led_Buf[6]=0;
+ 273   2                      Led_Buf[7]=0;           
+ 274   2              }
+ 275   1              else if(Led_ON_OFF_Mode==0)
+ 276   1              {
+ 277   2                      for(i=0;i<=7;i++)
+ 278   2                              {Led_Buf[i]=0;}
+ 279   2              }
+ 280   1      }
+ 281          /*¶¨Ê±Æ÷0ÇøÓò*/
+ 282          void Timer0_Init(void)          //1ºÁÃë@12.000MHz
+ 283          {
+ 284   1              AUXR &= 0x7F;                   //¶¨Ê±Æ÷Ê±ÖÓ12TÄ£Ê½
+ 285   1              TMOD &= 0xF0;                   //ÉèÖÃ¶¨Ê±Æ÷Ä£Ê½
+ 286   1              TMOD |=0x05;
+ 287   1              TL0 = 0x00;                             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+ 288   1              TH0 = 0x00;                             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+ 289   1              TF0 = 0;                                //Çå³ýTF0±êÖ¾
+ 290   1              TR0 = 1;                                //¶¨Ê±Æ÷0¿ªÊ¼¼ÆÊ±
+ 291   1      }
+ 292          /*¶¨Ê±Æ÷1ÇøÓò*/
+ 293          void Timer1_Init(void)          //1ºÁÃë@12.000MHz
+ 294          {
+ 295   1              AUXR &= 0xBF;                   //¶¨Ê±Æ÷Ê±ÖÓ12TÄ£Ê½
+ 296   1              TMOD &= 0x0F;                   //ÉèÖÃ¶¨Ê±Æ÷Ä£Ê½
+ 297   1              TL1 = 0x18;                             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+ 298   1              TH1 = 0xFC;                             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+ 299   1              TF1 = 0;                                //Çå³ýTF1±êÖ¾
+ 300   1              TR1 = 1;                                //¶¨Ê±Æ÷1¿ªÊ¼¼ÆÊ±
+C51 COMPILER V9.54   MAIN                                                                  03/14/2025 22:10:58 PAGE 6   
+
+ 301   1              ET1 = 1;                                //Ê¹ÄÜ¶¨Ê±Æ÷1ÖÐ¶Ï
+ 302   1              EA=1;
+ 303   1      }
+ 304          void Timer1_Isr(void) interrupt 3
+ 305          {
+ 306   1              if(++Key_Slow==20)Key_Slow=0;
+ 307   1              if(++Seg_Slow==200)Seg_Slow=0;
+ 308   1              
+ 309   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 310   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 311   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 312   1              
+ 313   1              if(++Time_1000ms==1000)
+ 314   1              {
+ 315   2                      Time_1000ms=0;
+ 316   2                      Frequency=(TH0<<8)|TL0;
+ 317   2                      TH0=0;
+ 318   2                      TL0=0;
+ 319   2                      Cycle_Xus=(1*1000*1000)/Frequency;
+ 320   2              }
+ 321   1              
+ 322   1              if(Key7_Keep_Flag==1)
+ 323   1              {
+ 324   2                      if(++Key7_Keep_1s==1000)
+ 325   2                      {
+ 326   3                              Key7_Keep_1s=0;
+ 327   3                              Led_ON_OFF_Mode^=1;
+ 328   3                              Key7_Keep_Flag=2;
+ 329   3                      }
+ 330   2              }
+ 331   1      }
+ 332          /*³õÊ¼»¯ÇøÓò*/
+ 333          void Init_Proc()
+ 334          {
+ 335   1              Sys_Init();
+ 336   1              Timer1_Init();
+ 337   1              Timer0_Init();
+ 338   1      }
+ 339          /*Ö÷º¯ÊýÇøÓò*/
+ 340          void main()
+ 341          {
+ 342   1              Init_Proc();
+ 343   1              while(1)
+ 344   1              {
+ 345   2                      Key_Proc();
+ 346   2                      Seg_Proc();
+ 347   2                      Led_Proc();
+ 348   2              }
+ 349   1      }
+ 350          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2384    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     58       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

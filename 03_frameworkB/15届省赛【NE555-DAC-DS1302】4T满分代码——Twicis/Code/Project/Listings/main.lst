@@ -1,0 +1,392 @@
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 00:17:31 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Source\User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Source\Driver;.
+                    -.\Source\User) DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*====================头文件引用区域====================*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <init.H>
+   4          #include <led.H>
+   5          #include <seg.H>
+   6          #include <key.H>
+   7          #include <ds1302.H>
+   8          #include <iic.H>
+   9          
+  10          /*====================变量声明区域====================*/
+  11          idata unsigned long int sys_tick;
+  12          idata unsigned char seg_buf[8]={10,10,10,10,10,10,10,10};
+  13          idata unsigned char seg_pos;
+  14          idata unsigned char led_buf[8]={0,0,0,0,0,0,0,0};
+  15          idata unsigned char key_val,key_down,key_up,key_old;
+  16          
+  17          idata unsigned char seg_show_mode=0;//【0-频率】【1-参数】【2-时间】【3-回显】
+  18          
+  19          idata unsigned int ne555_frequency;
+  20          idata unsigned char ne555_cycle_1s;
+  21          idata long int correct_frequency;
+  22          idata unsigned int parameter_f_overrun=2000;    //频率超限参数：2000Hz  【1000~9000】
+  23          idata int parameter_f_calibration=0;                    //频率校准值参数：0Hz   【-900~900】
+  24          idata bit parameter_index;                                      //【0-超限参数】【1-校准值参数】
+  25          
+  26          idata unsigned char rtc[3]={23,59,55};
+  27          
+  28          idata bit echo_index;                                                           //【0-频率回显】【1-时间回显】
+  29          idata unsigned int frequency_max_echo;                  //最大频率值            【0-频率回显】
+  30          idata unsigned char f_max_time_echo[3]={0,0,0}; //最大频率发生时间      【1-时间回显】
+  31          
+  32          idata float da_voltage;
+  33          
+  34          idata unsigned char L1_time_200ms;
+  35          idata bit L1_time_200ms_flag;
+  36          
+  37          idata unsigned char L2_time_200ms;
+  38          idata bit L2_time_200ms_flag;
+  39          /*====================数据获取区域====================*/
+  40          void rtc_task(void)
+  41          {
+  42   1              read_rtc(rtc);
+  43   1              if(frequency_max_echo<=correct_frequency)
+  44   1              {
+  45   2                      frequency_max_echo=correct_frequency;
+  46   2                      f_max_time_echo[0]=rtc[0];
+  47   2                      f_max_time_echo[1]=rtc[1];
+  48   2                      f_max_time_echo[2]=rtc[2];
+  49   2              }
+  50   1      }
+  51          void adda_task(void)
+  52          {
+  53   1              if(correct_frequency<0)
+  54   1                      da_voltage=0.0;
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 00:17:31 PAGE 2   
+
+  55   1              else if(correct_frequency>=parameter_f_overrun)
+  56   1                      da_voltage=5.0;
+  57   1              else if(correct_frequency<=500 && correct_frequency>=0)
+  58   1                      da_voltage=1.0;
+  59   1              else
+  60   1                      da_voltage=(4.0/(parameter_f_overrun-500.0))*(correct_frequency-500.0)+1.0;
+  61   1                      
+  62   1              da_write(da_voltage*51);
+  63   1      }
+  64          /*====================按键控制区域====================*/
+  65          void key_task(void)
+  66          {
+  67   1              key_val=key_read();
+  68   1              key_down=key_val&(key_old^key_val);
+  69   1              key_up=~key_val&(key_old^key_val);
+  70   1              key_old=key_val;
+  71   1              
+  72   1              switch(key_down)
+  73   1              {
+  74   2                      case 4:
+  75   2                              seg_show_mode=(++seg_show_mode)%4;
+  76   2                              parameter_index=echo_index=0;
+  77   2                      break;
+  78   2                      case 5:
+  79   2                              if(seg_show_mode==1)            //【1-参数】
+  80   2                                      parameter_index^=1;
+  81   2                              else if(seg_show_mode==3)       //【3-回显】
+  82   2                                      echo_index^=1;
+  83   2                      break;
+  84   2                      case 8://加
+  85   2                              if(seg_show_mode==1)//【1-参数】
+  86   2                              {
+  87   3                                      if(parameter_index==0)//【0-超限参数】
+  88   3                                      {
+  89   4                                              parameter_f_overrun+=1000;
+  90   4                                              if(parameter_f_overrun>9000)
+  91   4                                                      parameter_f_overrun=9000;
+  92   4                                      }
+  93   3                                      else//【1-校准值参数】
+  94   3                                      {
+  95   4                                              parameter_f_calibration+=100;
+  96   4                                              if(parameter_f_calibration>900)
+  97   4                                                      parameter_f_calibration=900;
+  98   4                                      }
+  99   3                              }
+ 100   2                      break;
+ 101   2                      case 9://减
+ 102   2                              if(seg_show_mode==1)//【1-参数】
+ 103   2                              {
+ 104   3                                      if(parameter_index==0)//【0-超限参数】
+ 105   3                                      {
+ 106   4                                              parameter_f_overrun-=1000;
+ 107   4                                              if(parameter_f_overrun<1000)
+ 108   4                                                      parameter_f_overrun=1000;
+ 109   4                                      }
+ 110   3                                      else//【1-校准值参数】
+ 111   3                                      {
+ 112   4                                              parameter_f_calibration-=100;
+ 113   4                                              if(parameter_f_calibration<-900)
+ 114   4                                                      parameter_f_calibration=-900;
+ 115   4                                      }
+ 116   3                              }
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 00:17:31 PAGE 3   
+
+ 117   2                      break;
+ 118   2              }
+ 119   1      }
+ 120          /*====================数码管控制区域====================*/
+ 121          void seg_task(void)
+ 122          {
+ 123   1              unsigned char i,j;
+ 124   1              switch(seg_show_mode)
+ 125   1              {
+ 126   2                      case 0:
+ 127   2                              seg_buf[0]=12;
+ 128   2                              seg_buf[1]=10;
+ 129   2                              seg_buf[2]=10;
+ 130   2                              if(correct_frequency>=0)
+ 131   2                              {
+ 132   3                                      seg_buf[3]=correct_frequency/10000%10;
+ 133   3                                      seg_buf[4]=correct_frequency/1000%10;
+ 134   3                                      seg_buf[5]=correct_frequency/100%10;
+ 135   3                                      seg_buf[6]=correct_frequency/10%10;
+ 136   3                                      seg_buf[7]=correct_frequency/1%10;
+ 137   3                                      for(i=3;i<7;i++)
+ 138   3                                      {
+ 139   4                                              if(seg_buf[i]==0 && seg_buf[i-1]>=10)
+ 140   4                                                      seg_buf[i]=10;
+ 141   4                                      }
+ 142   3                              }
+ 143   2                              else
+ 144   2                              {
+ 145   3                                      seg_buf[3]=10;
+ 146   3                                      seg_buf[4]=10;
+ 147   3                                      seg_buf[5]=10;
+ 148   3                                      seg_buf[6]=16;
+ 149   3                                      seg_buf[7]=16;
+ 150   3                              }
+ 151   2                      break;
+ 152   2                      case 1:
+ 153   2                              seg_buf[0]=13;
+ 154   2                              seg_buf[1]=(unsigned char)(parameter_index)+1;
+ 155   2                              seg_buf[2]=10;
+ 156   2                              seg_buf[3]=10;
+ 157   2                              if(parameter_index==0)
+ 158   2                              {
+ 159   3                                      seg_buf[4]=parameter_f_overrun/1000%10;
+ 160   3                                      seg_buf[5]=parameter_f_overrun/100%10;
+ 161   3                                      seg_buf[6]=parameter_f_overrun/10%10;
+ 162   3                                      seg_buf[7]=parameter_f_overrun/1%10;
+ 163   3                              }
+ 164   2                              else
+ 165   2                              {
+ 166   3                                      if(parameter_f_calibration>=0)
+ 167   3                                      {
+ 168   4                                              seg_buf[4]=parameter_f_calibration/1000%10;
+ 169   4                                              seg_buf[5]=parameter_f_calibration/100%10;
+ 170   4                                              seg_buf[6]=parameter_f_calibration/10%10;
+ 171   4                                              seg_buf[7]=parameter_f_calibration/1%10;
+ 172   4                                      }
+ 173   3                                      else
+ 174   3                                      {
+ 175   4                                              seg_buf[4]=(-parameter_f_calibration)/1000%10;
+ 176   4                                              seg_buf[5]=(-parameter_f_calibration)/100%10;
+ 177   4                                              seg_buf[6]=(-parameter_f_calibration)/10%10;
+ 178   4                                              seg_buf[7]=(-parameter_f_calibration)/1%10;
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 00:17:31 PAGE 4   
+
+ 179   4                                              for(j=4;j<7;j++)
+ 180   4                                              {
+ 181   5                                                      if(seg_buf[j]==0 && seg_buf[j-1]==10 && seg_buf[j+1]<=9)
+ 182   5                                                              seg_buf[j]=11;
+ 183   5                                              }
+ 184   4                                      }
+ 185   3                              }
+ 186   2                              for(i=4;i<7;i++)
+ 187   2                              {
+ 188   3                                      if(seg_buf[i]==0 && seg_buf[i-1]>=10)
+ 189   3                                              seg_buf[i]=10;
+ 190   3                              }
+ 191   2                      break;
+ 192   2                      case 2:
+ 193   2                              seg_buf[0]=rtc[0]/10;
+ 194   2                              seg_buf[1]=rtc[0]%10;
+ 195   2                              seg_buf[2]=11;
+ 196   2                              seg_buf[3]=rtc[1]/10;
+ 197   2                              seg_buf[4]=rtc[1]%10;
+ 198   2                              seg_buf[5]=11;
+ 199   2                              seg_buf[6]=rtc[2]/10;
+ 200   2                              seg_buf[7]=rtc[2]%10;
+ 201   2                      break;          
+ 202   2                      case 3:
+ 203   2                              seg_buf[0]=14;
+ 204   2                              seg_buf[1]=!echo_index?12:15;
+ 205   2                              if(echo_index==0)
+ 206   2                              {
+ 207   3                                      seg_buf[2]=10;
+ 208   3                                      seg_buf[3]=frequency_max_echo/10000%10;
+ 209   3                                      seg_buf[4]=frequency_max_echo/1000%10;
+ 210   3                                      seg_buf[5]=frequency_max_echo/100%10;
+ 211   3                                      seg_buf[6]=frequency_max_echo/10%10;
+ 212   3                                      seg_buf[7]=frequency_max_echo/1%10;
+ 213   3                                      for(i=3;i<7;i++)
+ 214   3                                      {
+ 215   4                                              if(seg_buf[i]==0 && seg_buf[i-1]>=10)
+ 216   4                                                      seg_buf[i]=10;
+ 217   4                                      }
+ 218   3                              }
+ 219   2                              else
+ 220   2                              {
+ 221   3                                      seg_buf[2]=f_max_time_echo[0]/10;
+ 222   3                                      seg_buf[3]=f_max_time_echo[0]%10;
+ 223   3                                      seg_buf[4]=f_max_time_echo[1]/10;
+ 224   3                                      seg_buf[5]=f_max_time_echo[1]%10;
+ 225   3                                      seg_buf[6]=f_max_time_echo[2]/10;
+ 226   3                                      seg_buf[7]=f_max_time_echo[2]%10;
+ 227   3                              }
+ 228   2                      break;          
+ 229   2              }
+ 230   1      }
+ 231          /*====================led控制区域====================*/
+ 232          void led_task(void)
+ 233          {
+ 234   1              led_buf[0]=seg_show_mode==0?L1_time_200ms_flag:0;
+ 235   1              
+ 236   1              led_buf[1]=correct_frequency>0?L2_time_200ms_flag:1;
+ 237   1              
+ 238   1              led_disp(led_buf);
+ 239   1      }
+ 240          /*====================NE555定时器0区域====================*/
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 00:17:31 PAGE 5   
+
+ 241          void NE555_Init(void)           //1毫秒@12.000MHz
+ 242          {
+ 243   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 244   1              TMOD &= 0xF0;                   //设置定时器模式
+ 245   1              TMOD |= 0x05;                   //设置定时器模式
+ 246   1              TL0 = 0;                                //设置定时初始值
+ 247   1              TH0 = 0;                                //设置定时初始值
+ 248   1              TF0 = 0;                                //清除TF0标志
+ 249   1              TR0 = 1;                                //定时器0开始计时
+ 250   1      }
+ 251          /*====================定时器1区域====================*/
+ 252          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 253          {
+ 254   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 255   1              TMOD &= 0x0F;                   //设置定时器模式
+ 256   1              TL1 = 0x18;                             //设置定时初始值
+ 257   1              TH1 = 0xFC;                             //设置定时初始值
+ 258   1              TF1 = 0;                                //清除TF1标志
+ 259   1              TR1 = 1;                                //定时器1开始计时
+ 260   1              ET1 = 1;                                //使能定时器1中断
+ 261   1              EA=1;
+ 262   1      }
+ 263          void Timer1_Isr(void) interrupt 3
+ 264          {
+ 265   1              sys_tick++;
+ 266   1              seg_pos=(++seg_pos)%8;
+ 267   1              if(seg_buf[seg_pos]>20)
+ 268   1                      seg_disp(seg_pos,seg_buf[seg_pos]-',',1);
+ 269   1              else
+ 270   1                      seg_disp(seg_pos,seg_buf[seg_pos],0);
+ 271   1              
+ 272   1              if(++ne555_cycle_1s==100)
+ 273   1              {
+ 274   2                      ne555_cycle_1s=0;
+ 275   2                      ne555_frequency=TH0<<8|TL0;
+ 276   2                      ne555_frequency=ne555_frequency*10;
+ 277   2                      correct_frequency=(long int)ne555_frequency+parameter_f_calibration;
+ 278   2                      TH0=TL0=0;
+ 279   2              }
+ 280   1              
+ 281   1              if(seg_show_mode==0)
+ 282   1              {
+ 283   2                      if(++L1_time_200ms==200)
+ 284   2                      {
+ 285   3                              L1_time_200ms=0;
+ 286   3                              L1_time_200ms_flag^=1;
+ 287   3                      }
+ 288   2              }
+ 289   1              else
+ 290   1                      L1_time_200ms=L1_time_200ms_flag=0;
+ 291   1              
+ 292   1              
+ 293   1              
+ 294   1              if(correct_frequency>parameter_f_overrun)
+ 295   1              {
+ 296   2                      if(++L2_time_200ms==200)
+ 297   2                      {
+ 298   3                              L2_time_200ms=0;
+ 299   3                              L2_time_200ms_flag^=1;
+ 300   3                      }
+ 301   2              }
+ 302   1              else
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 00:17:31 PAGE 6   
+
+ 303   1              {
+ 304   2                      L2_time_200ms=L2_time_200ms_flag=0;
+ 305   2              }
+ 306   1      }
+ 307          /*====================调度器区域====================*/
+ 308          typedef struct{
+ 309                  void (*task_function)(void);
+ 310                  unsigned long int rate_time;
+ 311                  unsigned long int last_time;
+ 312          }TaskMessage;
+ 313          idata TaskMessage ScheduleTask[]={
+ 314                  {key_task,20,0},
+ 315                  {led_task,1,0},
+ 316                  {seg_task,200,0},
+ 317                  {rtc_task,300,0},
+ 318                  {adda_task,250,0},
+ 319          };
+ 320          idata unsigned char task_num;
+ 321          void schedule_init(void)
+ 322          {
+ 323   1              task_num=sizeof(ScheduleTask)/sizeof(TaskMessage);
+ 324   1      }
+ 325          void schedule_run(void)
+ 326          {
+ 327   1              unsigned char i;
+ 328   1              for(i=0;i<task_num;i++)
+ 329   1              {
+ 330   2                      unsigned long int now_time=sys_tick;
+ 331   2                      if(now_time>=ScheduleTask[i].rate_time+ScheduleTask[i].last_time)
+ 332   2                      {
+ 333   3                              ScheduleTask[i].last_time=now_time;
+ 334   3                              ScheduleTask[i].task_function();
+ 335   3                      }
+ 336   2              }
+ 337   1      }
+ 338          /*====================初始化区域====================*/
+ 339          void init_task(void)
+ 340          {
+ 341   1              sys_init();
+ 342   1              schedule_init();
+ 343   1              set_rtc(rtc);
+ 344   1              NE555_Init();
+ 345   1              Timer1_Init();
+ 346   1      }
+ 347          /*====================主函数区域====================*/
+ 348          void main(void)
+ 349          {
+ 350   1              init_task();
+ 351   1              while(1)
+ 352   1              {
+ 353   2                      schedule_run();
+ 354   2              }
+ 355   1      }
+ 356          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1971    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       6
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 00:17:31 PAGE 7   
+
+   IDATA SIZE       =    107    ----
+   BIT SIZE         =      4    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

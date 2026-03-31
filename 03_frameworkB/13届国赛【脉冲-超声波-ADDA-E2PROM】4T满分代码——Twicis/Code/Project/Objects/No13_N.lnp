@@ -1,0 +1,10 @@
+".\Objects\STARTUP.obj",
+".\Objects\main.obj",
+".\Objects\iic.obj",
+".\Objects\init.obj",
+".\Objects\key.obj",
+".\Objects\led.obj",
+".\Objects\seg.obj",
+".\Objects\ultrasound.obj" 
+TO ".\Objects\No13_N" 
+PRINT(".\Listings\No13_N.m51") RAMSIZE(256) 

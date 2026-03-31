@@ -1,0 +1,9 @@
+".\Objects\STARTUP.obj",
+".\Objects\main.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj",
+".\Objects\onewire.obj" 
+TO ".\Objects\No15_M3" 
+PRINT(".\Listings\No15_M3.m51") RAMSIZE(256) 

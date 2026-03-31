@@ -1,0 +1,251 @@
+C51 COMPILER V9.54   MAIN                                                                  03/13/2025 21:35:57 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*Í·ÎÄ¼þÒýÓÃÇøÓò*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <iic.H>
+   8          /*±äÁ¿ÉùÃ÷ÇøÓò*/
+   9          unsigned char Key_Slow;
+  10          unsigned char Seg_Slow;
+  11          unsigned char AD_Read_Slow;
+  12          unsigned char Key_Val,Key_Old,Key_Down,Key_Up;
+  13          unsigned char Seg_Pos;
+  14          unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  15          unsigned char Seg_Point[8]={0,0,0,0,0,0,0,0};
+  16          unsigned char Led_Buf[8]={0,0,0,0,0,0,0,0};
+  17          
+  18          
+  19          unsigned char Seg_Show_Mode=0;//¡¾0-Êý¾Ý¡¿¡¾1-²ÎÊý¡¿¡¾2-¼ÆÊý¡¿
+  20          
+  21          unsigned char AD_Read_Data;
+  22          float Voltage_VAIN3_Old;//ÉÏÒ»´ÎAIN3Í¨µÀ²É¼¯µ½µÄµçÑ¹ÖµVAIN3
+  23          float Voltage_VAIN3;//AIN3Í¨µÀ²É¼¯µ½µÄµçÑ¹ÖµVAIN3
+  24          float Voltage_Parameter;//µçÑ¹²ÎÊý
+  25          float Voltage_Parameter_Set;//µçÑ¹²ÎÊýÉèÖÃÖµ
+  26          unsigned char EEPROM_Save_Data[1]={0};//EEPROMµçÑ¹²ÎÊý´æ´¢Öµ
+  27          unsigned char EEPROM_Read_Data[1]={0};//EEPROMµçÑ¹²ÎÊý¶ÁÈ¡Öµ
+  28          unsigned long int V_Count=0;//¼ÆÊý
+  29          bit VAIN3_Low_5s_Flag;//VAIN3 < VPµÄ×´Ì¬³ÖÐøÊ±¼ä³¬¹ý5Ãë±êÖ¾Î»
+  30          unsigned char Key_Error_Count=0;
+  31          
+  32          unsigned int Time_5000ms=0;
+  33          /*°´¼ü¿ØÖÆÇøÓò*/
+  34          void Key_Proc()
+  35          {
+  36   1              if(Key_Slow)return;
+  37   1              Key_Slow=1;
+  38   1              
+  39   1              Key_Val=Key_Read();
+  40   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  41   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  42   1              Key_Old=Key_Val;
+  43   1              
+  44   1              switch(Key_Down)
+  45   1              {
+  46   2                      case 12://S12£º¡°ÏÔÊ¾½çÃæÇÐ»»¡±°´¼ü£¬°´ÏÂÇÐ»»¡¾0-Êý¾Ý¡¿¡¾1-²ÎÊý¡¿¡¾2-¼ÆÊý¡¿½çÃæ
+  47   2                              Key_Error_Count=0;
+  48   2                              if(++Seg_Show_Mode==3)Seg_Show_Mode=0;
+  49   2                              if(Seg_Show_Mode==1)//½øÈë¡¾1-²ÎÊý¡¿½çÃæ
+  50   2                                      {Voltage_Parameter_Set=Voltage_Parameter;}
+  51   2                              else if(Seg_Show_Mode==2)//Àë¿ª¡¾1-²ÎÊý¡¿½çÃæ
+  52   2                              {
+  53   3                                      Voltage_Parameter=Voltage_Parameter_Set;
+  54   3                                      EEPROM_Save_Data[0]=(unsigned char)(Voltage_Parameter*10);      /*´Ó²ÎÊý½çÃæÍË³öÊ±£¬½«µçÑ¹²ÎÊýVP·Å´ó10±¶ºó£
+C51 COMPILER V9.54   MAIN                                                                  03/13/2025 21:35:57 PAGE 2   
+
+             -¨VP*10£©*/
+  55   3                                      EEPROM_Write(EEPROM_Save_Data,0,1);                                                     /*±£´æµ½E2PROM´æ´¢Æ÷£¨ÄÚ²¿µØÖ·0£©£¬Õ¼ÓÃÒ»¸ö×Ö½Ú¡£*/
+  56   3                              }
+  57   2                      break;
+  58   2                      case 13://S13£º¡°ÇåÁã¡±°´¼ü£¬°´ÏÂ¿É½«µ±Ç°¼ÆÊýÖµÇåÁã¡£½öÔÚ¡¾2-¼ÆÊý¡¿½çÃæÓÐÐ§¡£
+  59   2                              if(Seg_Show_Mode==2)
+  60   2                              {
+  61   3                                      Key_Error_Count=0;
+  62   3                                      V_Count=0;
+  63   3                              }
+  64   2                              else
+  65   2                              {
+  66   3                                      Key_Error_Count++;
+  67   3                              }
+  68   2                      break;
+  69   2                      case 16://S16£º¡°¼Ó¡±°´¼ü£¬°´ÏÂµçÑ¹²ÎÊýVPÔö¼Ó0.5V£»Ôö¼Óµ½5.00VÔÙ°´·µ»Ø0.00V¡£½öÔÚ¡¾1-²ÎÊý¡¿ÉèÖÃ½çÃæÓÐÐ§¡
+             -£
+  70   2                              if(Seg_Show_Mode==1)
+  71   2                              {
+  72   3                                      Key_Error_Count=0;
+  73   3                                      Voltage_Parameter_Set+=0.5;
+  74   3                                      if(Voltage_Parameter_Set==5.5)
+  75   3                                              Voltage_Parameter_Set=0;
+  76   3                              }
+  77   2                              else
+  78   2                              {
+  79   3                                      Key_Error_Count++;
+  80   3                              }
+  81   2                      break;
+  82   2                      case 17://S17£º¡°¼õ¡±°´¼ü£¬°´ÏÂµçÑ¹²ÎÊýVP¼õÐ¡0.5V£»¼õÐ¡µ½0.00VÔÙ°´·µ»Ø5.00V¡£½öÔÚ¡¾1-²ÎÊý¡¿ÉèÖÃ½çÃæÓÐÐ§¡
+             -£
+  83   2                              if(Seg_Show_Mode==1)
+  84   2                              {
+  85   3                                      Key_Error_Count=0;
+  86   3                                      Voltage_Parameter_Set-=0.5;
+  87   3                                      if(Voltage_Parameter_Set==-0.5)
+  88   3                                              Voltage_Parameter_Set=5;
+  89   3                              }
+  90   2                              else
+  91   2                              {
+  92   3                                      Key_Error_Count++;
+  93   3                              }
+  94   2                      break;
+  95   2                              
+  96   2                      case 4:case 5:case 6:case 7:
+  97   2                      case 8:case 9:case 10:case 11:
+  98   2                                              case 14:case 15:
+  99   2                                              case 18:case 19:
+ 100   2                              Key_Error_Count++;
+ 101   2                      break;
+ 102   2              }
+ 103   1      }
+ 104          /*ÊýÂë¹ÜÏÔÊ¾ÇøÓò*/
+ 105          void Seg_Proc()
+ 106          {
+ 107   1              unsigned char i;        
+ 108   1              
+ 109   1              if(Seg_Slow)return;
+ 110   1              Seg_Slow=1;
+ 111   1              
+ 112   1              AD_Read_Data=AD_Read(0x43);
+ 113   1              Voltage_VAIN3=AD_Read_Data/51.0;
+C51 COMPILER V9.54   MAIN                                                                  03/13/2025 21:35:57 PAGE 3   
+
+ 114   1              
+ 115   1                      
+ 116   1              switch(Seg_Show_Mode)
+ 117   1              {
+ 118   2                      case 0://¡¾0-Êý¾Ý¡¿AD_Read_Data
+ 119   2                              for(i=1;i<=4;i++)
+ 120   2                                      {Seg_Buf[i]=10;}
+ 121   2                              Seg_Buf[0]=11;//U
+ 122   2                              Seg_Buf[5]=(unsigned int)Voltage_VAIN3/1%10;
+ 123   2                              Seg_Point[5]=1;//Ð¡Êýµã
+ 124   2                              Seg_Buf[6]=(unsigned int)(Voltage_VAIN3*10)%10;
+ 125   2                              Seg_Buf[7]=(unsigned int)(Voltage_VAIN3*100)%10;
+ 126   2                      break;
+ 127   2                      case 1://¡¾1-²ÎÊý¡¿
+ 128   2                              for(i=1;i<=4;i++)
+ 129   2                                      {Seg_Buf[i]=10;}
+ 130   2                              Seg_Buf[0]=12;//P
+ 131   2                              Seg_Buf[5]=(unsigned int)Voltage_Parameter_Set/1%10;
+ 132   2                              Seg_Point[5]=1;//Ð¡Êýµã
+ 133   2                              Seg_Buf[6]=(unsigned int)(Voltage_Parameter_Set*10)%10;
+ 134   2                              Seg_Buf[7]=(unsigned int)(Voltage_Parameter_Set*100)%10;
+ 135   2                      break;
+ 136   2                      case 2://¡¾2-¼ÆÊý¡¿
+ 137   2                              Seg_Point[5]=0;//Çå³ýÐ¡Êýµã
+ 138   2                              Seg_Buf[0]=13;//N
+ 139   2                      Seg_Buf[1]=(V_Count/1000000%10)?(V_Count/1000000%10):10;
+ 140   2                      Seg_Buf[2]=(V_Count/100000%10)?(V_Count/100000%10):10;
+ 141   2                      Seg_Buf[3]=(V_Count/10000%10)?(V_Count/10000%10):10;
+ 142   2                      Seg_Buf[4]=(V_Count/1000%10)?(V_Count/1000%10):10;
+ 143   2                      Seg_Buf[5]=(V_Count/100%10)?(V_Count/100%10):10;
+ 144   2                      Seg_Buf[6]=(V_Count/10%10)?(V_Count/10%10):10;
+ 145   2                      Seg_Buf[7]=(V_Count/1%10)?(V_Count/1%10):10;
+ 146   2      //              Seg_Buf[7]=V_Count/1%10;
+ 147   2                      break;
+ 148   2              }
+ 149   1      }
+ 150          /*LedÏÔÊ¾ÇøÓò*/
+ 151          void Led_Proc()
+ 152          {
+ 153   1              Led_Buf[0]=VAIN3_Low_5s_Flag?1:0;       //1) Ö¸Ê¾µÆL1£ºµ±VAIN3 < VPµÄ×´Ì¬³ÖÐøÊ±¼ä³¬¹ý5ÃëÊ±£¬    L1µãÁÁ£¬·ñÔòÏ¨Ãð¡£
+             - 
+ 154   1              Led_Buf[1]=(V_Count%2)?1:0;                     //2) Ö¸Ê¾µÆL2£ºµ±Ç°¼ÆÊýÖµÎªÆæÊýÊ±£¬                                     L2µãÁÁ£¬·ñÔòÏ¨Ãð¡£ 
+ 155   1              Led_Buf[2]=(Key_Error_Count>=3)?1:0;//3) Ö¸Ê¾µÆL3£ºÁ¬Ðø3´ÎÒÔÉÏ£¨º¬3´Î£©µÄÎÞÐ§°´¼ü²Ù×÷Ê±£¬       L3µãÁÁ£¬Ö±µ½³öÏ
+             -ÖÓÐÐ§µÄ°´¼ü²Ù×÷£¬L3Ï¨Ãð¡£
+ 156   1      }
+ 157          /*¶¨Ê±Æ÷ÇøÓò*/
+ 158          void Timer0_Init(void)          //1ºÁÃë@12.000MHz
+ 159          {
+ 160   1              AUXR &= 0x7F;                   //¶¨Ê±Æ÷Ê±ÖÓ12TÄ£Ê½
+ 161   1              TMOD &= 0xF0;                   //ÉèÖÃ¶¨Ê±Æ÷Ä£Ê½
+ 162   1              TL0 = 0x18;                             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+ 163   1              TH0 = 0xFC;                             //ÉèÖÃ¶¨Ê±³õÊ¼Öµ
+ 164   1              TF0 = 0;                                //Çå³ýTF0±êÖ¾
+ 165   1              TR0 = 1;                                //¶¨Ê±Æ÷0¿ªÊ¼¼ÆÊ±
+ 166   1              ET0 = 1;                                //Ê¹ÄÜ¶¨Ê±Æ÷0ÖÐ¶Ï
+ 167   1              EA=1;
+ 168   1      }
+ 169          void Timer0_Isr(void) interrupt 1
+ 170          {
+ 171   1              if(++Key_Slow==20)Key_Slow=0;
+ 172   1              if(++Seg_Slow==80)Seg_Slow=0;
+ 173   1              
+C51 COMPILER V9.54   MAIN                                                                  03/13/2025 21:35:57 PAGE 4   
+
+ 174   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 175   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 176   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 177   1              
+ 178   1              if(Voltage_VAIN3_Old>Voltage_VAIN3 && Voltage_VAIN3_Old>Voltage_Parameter && Voltage_VAIN3<=Voltage_Param
+             -eter)
+ 179   1                      {V_Count++;}
+ 180   1              Voltage_VAIN3_Old=Voltage_VAIN3;
+ 181   1                      
+ 182   1                      
+ 183   1              if(Voltage_VAIN3<Voltage_Parameter)
+ 184   1              {
+ 185   2                      if(++Time_5000ms==5000)
+ 186   2                      {
+ 187   3                              Time_5000ms=0;
+ 188   3                              VAIN3_Low_5s_Flag=1;
+ 189   3                      }
+ 190   2              }
+ 191   1              else if(Voltage_VAIN3>=Voltage_Parameter)
+ 192   1              {
+ 193   2                      Time_5000ms=0;
+ 194   2                      VAIN3_Low_5s_Flag=0;
+ 195   2              }
+ 196   1      }
+ 197          /*³õÊ¼»¯ÇøÓò*/
+ 198          void Init_Proc()
+ 199          {
+ 200   1              EEPROM_Read(EEPROM_Read_Data,0,1);
+ 201   1              Voltage_Parameter=EEPROM_Read_Data[0]/10.0;
+ 202   1              Sys_Init();
+ 203   1              Timer0_Init();
+ 204   1      }
+ 205          /*Ö÷º¯ÊýÇøÓò*/
+ 206          void main()
+ 207          {
+ 208   1              Init_Proc();
+ 209   1              while(1)
+ 210   1              {
+ 211   2                      Key_Proc();
+ 212   2                      Seg_Proc();
+ 213   2                      Led_Proc();
+ 214   2              }
+ 215   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1503    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     59       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

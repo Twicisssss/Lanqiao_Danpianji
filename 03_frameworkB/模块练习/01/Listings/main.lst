@@ -1,0 +1,317 @@
+C51 COMPILER V9.54   MAIN                                                                  06/14/2025 23:07:28 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*==========头文件引用区域==========*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <init.H>
+   4          #include <led.H>
+   5          #include <seg.H>
+   6          #include <key.H>
+   7          #include <ds1302.H>
+   8          #include <onewire.H>
+   9          #include <iic.H>
+  10          #include <ultrasound.H>
+  11          #include <uart.H>
+  12          /*==========变量声明区域==========*/
+  13          idata unsigned long int sys_tick;
+  14          idata unsigned char key_val,key_old,key_down,key_up;
+  15          idata unsigned char led_buf[8]={0,0,0,0,0,0,0,0};
+  16          idata unsigned char seg_pos,seg_buf[8]={10,10,10,10,10,10,10,10};
+  17          idata unsigned char seg_show_mode=0;
+  18          
+  19          //数据
+  20          idata unsigned char rtc[3]={23,59,55};
+  21          idata unsigned int ne555_frequency;
+  22          idata unsigned int ne555_cycle_1s;
+  23          idata unsigned int temperature_10x;
+  24          idata unsigned char ad_light_v_10x;
+  25          idata unsigned char ad_RB2_v_10x;
+  26          idata unsigned char da_voltage_10x;
+  27          idata unsigned char us_distance;
+  28          
+  29          //串口
+  30          pdata unsigned char uart_buf[10]={0};
+  31          idata unsigned char uart_rx_index;
+  32          idata unsigned int uart_rx_tick;
+  33          idata unsigned char uart_rx_flag;
+  34          
+  35          //eeprom
+  36          idata unsigned char eeprom_save_data;
+  37          pdata unsigned char eeprom_pw=23;
+  38          /*==========数据获取区域==========*/
+  39          void rtc_task(void)
+  40          {
+  41   1              rtc_read(rtc);
+  42   1      }
+  43          void temperature_task(void)
+  44          {
+  45   1              temperature_10x=temperature_read()*10;
+  46   1      }
+  47          void adda_task(void)
+  48          {       
+  49   1      //      ad_light_v_10x=(ad_read(0x01)/51.0)*10;
+  50   1              /*同时读取两个电压值时，需要调换地址*/
+  51   1              ad_light_v_10x=(ad_read(0x03)/51.0)*10;
+  52   1              ad_RB2_v_10x=(ad_read(0x01)/51.0)*10;
+  53   1              
+  54   1              da_voltage_10x=21;//输出2.1V电压
+C51 COMPILER V9.54   MAIN                                                                  06/14/2025 23:07:28 PAGE 2   
+
+  55   1              da_write(da_voltage_10x*5.10);
+  56   1      }
+  57          void ulrtasound_task(void)
+  58          {
+  59   1              us_distance=us_distance_get();
+  60   1      }
+  61          /*==========按键控制区域==========*/
+  62          void key_task(void)
+  63          {
+  64   1              key_val=key_read();
+  65   1              key_down=key_val&(key_old^key_val);
+  66   1              key_up=~key_val&(key_old^key_val);
+  67   1              key_old=key_val;
+  68   1              
+  69   1              switch(key_down)
+  70   1              {
+  71   2                      case 4:
+  72   2                              seg_show_mode=(++seg_show_mode)%4;
+  73   2                      break;
+  74   2                      case 5:
+  75   2                              
+  76   2                              eeprom_write(&eeprom_save_data,0,1);
+  77   2                              eeprom_write(&eeprom_pw,8,1);
+  78   2                      break;
+  79   2                      case 8:
+  80   2                              eeprom_save_data++;
+  81   2                      break;
+  82   2              }
+  83   1      }
+  84          /*==========数码管控制区域==========*/
+  85          void seg_task(void)
+  86          {
+  87   1              unsigned char j;
+  88   1              switch(seg_show_mode)
+  89   1              {
+  90   2                      case 0:
+  91   2                              seg_buf[0]=rtc[0]/10;
+  92   2                              seg_buf[1]=rtc[0]%10;
+  93   2                              seg_buf[2]=11;
+  94   2                              seg_buf[3]=rtc[1]/10;
+  95   2                              seg_buf[4]=rtc[1]%10;
+  96   2                              seg_buf[5]=11;
+  97   2                              seg_buf[6]=rtc[2]/10;
+  98   2                              seg_buf[7]=rtc[2]%10;
+  99   2                      break;
+ 100   2                      case 1:
+ 101   2                              seg_buf[0]=12;
+ 102   2                              seg_buf[1]=12;
+ 103   2                              seg_buf[2]=ne555_frequency/100000%10;
+ 104   2                              seg_buf[3]=ne555_frequency/10000%10;
+ 105   2                              seg_buf[4]=ne555_frequency/1000%10;
+ 106   2                              seg_buf[5]=ne555_frequency/100%10;
+ 107   2                              seg_buf[6]=ne555_frequency/10%10;
+ 108   2                              seg_buf[7]=ne555_frequency/1%10;
+ 109   2                              for(j=2;j<7;j++)
+ 110   2                              {
+ 111   3                                      if(seg_buf[j]==0 && seg_buf[j-1]>=10)
+ 112   3                                              seg_buf[j]=10;
+ 113   3                              }
+ 114   2                      break;
+ 115   2                      case 2:
+ 116   2                              seg_buf[0]=13;
+C51 COMPILER V9.54   MAIN                                                                  06/14/2025 23:07:28 PAGE 3   
+
+ 117   2                              seg_buf[1]=temperature_10x/100%10;
+ 118   2                              seg_buf[2]=temperature_10x/10%10+',';
+ 119   2                              seg_buf[3]=temperature_10x/1%10;
+ 120   2                              seg_buf[4]=15;
+ 121   2                              seg_buf[5]=us_distance/100%10;
+ 122   2                              seg_buf[6]=us_distance/10%10;
+ 123   2                              seg_buf[7]=us_distance/1%10;
+ 124   2                      break;
+ 125   2                      case 3:
+ 126   2                              seg_buf[0]=14;
+ 127   2                              seg_buf[1]=11;
+ 128   2                              seg_buf[2]=ad_light_v_10x/10%10+',';
+ 129   2                              seg_buf[3]=ad_light_v_10x/1%10;
+ 130   2                              seg_buf[4]=14;
+ 131   2                              seg_buf[5]=11;
+ 132   2                              seg_buf[6]=ad_RB2_v_10x/10%10+',';
+ 133   2                              seg_buf[7]=ad_RB2_v_10x/1%10;
+ 134   2                      break;
+ 135   2              }
+ 136   1      }
+ 137          /*==========LED控制区域==========*/
+ 138          void led_task(void)
+ 139          {
+ 140   1              led_buf[0]=1;
+ 141   1              
+ 142   1              led_disp(led_buf);
+ 143   1      }
+ 144          /*==========NE555定时器0区域==========*/
+ 145          void NE555_Timer0_Init(void)//@12.000MHz
+ 146          {
+ 147   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 148   1              TMOD &= 0xF0;                   //设置定时器模式
+ 149   1              TMOD |= 0x05;                   //设置定时器模式
+ 150   1              TL0 = 0;                                //设置定时初始值
+ 151   1              TH0 = 0;                                //设置定时初始值
+ 152   1              TF0 = 0;                                //清除TF0标志
+ 153   1              TR0 = 1;                                //定时器0开始计时
+ 154   1      }
+ 155          /*==========定时器1区域==========*/
+ 156          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 157          {
+ 158   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 159   1              TMOD &= 0x0F;                   //设置定时器模式
+ 160   1              TL1 = 0x18;                             //设置定时初始值
+ 161   1              TH1 = 0xFC;                             //设置定时初始值
+ 162   1              TF1 = 0;                                //清除TF1标志
+ 163   1              TR1 = 1;                                //定时器1开始计时
+ 164   1              ET1 = 1;                                //使能定时器1中断
+ 165   1              EA=1;
+ 166   1      }
+ 167          void Timer1_Isr(void) interrupt 3
+ 168          {
+ 169   1              sys_tick++;
+ 170   1              seg_pos=(++seg_pos)%8;
+ 171   1              if(seg_buf[seg_pos]>=20)
+ 172   1                      seg_disp(seg_pos,seg_buf[seg_pos]-',',1);
+ 173   1              else
+ 174   1                      seg_disp(seg_pos,seg_buf[seg_pos],0);
+ 175   1              
+ 176   1              if(++ne555_cycle_1s==100)
+ 177   1              {
+ 178   2                      ne555_cycle_1s=0;
+C51 COMPILER V9.54   MAIN                                                                  06/14/2025 23:07:28 PAGE 4   
+
+ 179   2                      ne555_frequency=TH0<<8|TL0;
+ 180   2                      TH0=TL0=0;
+ 181   2                      ne555_frequency=ne555_frequency*10;
+ 182   2              }
+ 183   1              
+ 184   1              if(uart_rx_flag==1)
+ 185   1                      uart_rx_tick++;
+ 186   1      }
+ 187          /*==========串口控制区域==========*/
+ 188          void uart_task(void)
+ 189          {
+ 190   1              unsigned int num;
+ 191   1              unsigned int result,chars_read;
+ 192   1              if(uart_rx_index==0)return;
+ 193   1              if(uart_rx_tick>10)
+ 194   1              {
+ 195   2                      uart_rx_flag=0;
+ 196   2                      uart_rx_tick=0;
+ 197   2                      if(strncmp(uart_buf,"show=",5)==0)
+ 198   2                              result=sscanf(uart_buf,"show=%u%n",&num,&chars_read);
+ 199   2                      if(result==1)
+ 200   2                      {
+ 201   3                              seg_show_mode=num;
+ 202   3                              printf("Success!show%u\n",num);
+ 203   3                              printf("chars_read=%u\n",chars_read);
+ 204   3                              printf("eeprom_data=%bu\n",eeprom_save_data);
+ 205   3                      }
+ 206   2                      
+ 207   2                      memset(uart_buf,0,uart_rx_index);
+ 208   2                      uart_rx_index=0;
+ 209   2              }
+ 210   1      }
+ 211          void Uart1_Isr(void) interrupt 4
+ 212          {
+ 213   1              if (RI)                         //检测串口1接收中断
+ 214   1              {
+ 215   2                      uart_rx_flag=1;
+ 216   2                      uart_rx_tick=0;
+ 217   2                      uart_buf[uart_rx_index++]=SBUF;
+ 218   2                      
+ 219   2                      RI = 0;                 //清除串口1接收中断请求位
+ 220   2                      if(uart_rx_index>10)
+ 221   2                      {
+ 222   3                              uart_rx_index=0;
+ 223   3                              memset(uart_buf,0,10);
+ 224   3                      }
+ 225   2              }
+ 226   1      }
+ 227          /*==========调度器区域==========*/
+ 228          typedef struct{
+ 229                  void (*task_function)(void);
+ 230                  unsigned long int rate_time;
+ 231                  unsigned long int last_time;
+ 232          }TaskMessage;
+ 233          idata TaskMessage TaskSchedule[]={
+ 234                  {key_task,20,0},
+ 235                  {led_task,1,0},
+ 236                  {seg_task,200,0},
+ 237                  {rtc_task,300,0},
+ 238                  {temperature_task,180,0},
+ 239                  {ulrtasound_task,100,0},
+ 240                  {adda_task,160,0},
+C51 COMPILER V9.54   MAIN                                                                  06/14/2025 23:07:28 PAGE 5   
+
+ 241                  {uart_task,260,0},
+ 242          };
+ 243          idata task_num;
+ 244          void schedule_init(void)
+ 245          {
+ 246   1              task_num=sizeof(TaskSchedule)/sizeof(TaskMessage);
+ 247   1      }
+ 248          void schedule_run(void)
+ 249          {
+ 250   1              unsigned char i;
+ 251   1              for(i=0;i<task_num;i++)
+ 252   1              {
+ 253   2                      unsigned long int now_time=sys_tick;
+ 254   2                      if(now_time>=TaskSchedule[i].rate_time+TaskSchedule[i].last_time)
+ 255   2                      {
+ 256   3                              TaskSchedule[i].last_time=now_time;
+ 257   3                              TaskSchedule[i].task_function();
+ 258   3                      }
+ 259   2              }
+ 260   1      }
+ 261          /*==========初始化区域==========*/
+ 262          void init_task(void)
+ 263          {
+ 264   1              unsigned char eeprom_check;
+ 265   1              eeprom_read(&eeprom_check,8,1);
+ 266   1              if(eeprom_check==23)
+ 267   1                      eeprom_read(&eeprom_save_data,0,1);
+ 268   1              sys_init();
+ 269   1              schedule_init();
+ 270   1              rtc_set(rtc);
+ 271   1              Uart1_Init();
+ 272   1              NE555_Timer0_Init();
+ 273   1              Timer1_Init();
+ 274   1      }
+ 275          /*==========主函数区域==========*/
+ 276          void main(void)
+ 277          {
+ 278   1              init_task();
+ 279   1              while(1)
+ 280   1              {
+ 281   2                      schedule_run();
+ 282   2              }
+ 283   1      }
+ 284          
+ 285          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1416    ----
+   CONSTANT SIZE    =     64    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =     11    ----
+   DATA SIZE        =   ----      12
+   IDATA SIZE       =    134    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,239 @@
+C51 COMPILER V9.54   MAIN                                                                  04/04/2025 22:40:09 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <onewire.H>
+   8          /*变量声明区域*/
+   9          idata unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+  10          idata unsigned char Seg_Slow,Seg_Pos;
+  11          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10},Seg_Point[8]={0,0,0,0,0,0,0,0};
+  12          idata unsigned char Beeper_Buf=0,Relay_Buf=0,Led_Buf[8]={0,0,0,0,0,0,0,0};
+  13          idata unsigned char i,j;
+  14          
+  15          
+  16          idata unsigned char Seg_Show_Mode=0;//【0-信号】【1-温度】
+  17          idata bit Change_Mode=0;
+  18          idata bit Change_Flag=0;
+  19          
+  20          idata float Temperature;
+  21          idata unsigned char Temperature_Int;
+  22          
+  23          idata unsigned int Time_F_1s;
+  24          idata unsigned int Frequency;
+  25          idata unsigned int Cycle;
+  26          
+  27          idata unsigned int Time_1000ms;
+  28          
+  29          idata unsigned char Time_100ms;
+  30          idata bit Time_100ms_Flag;
+  31          /*按键控制区域*/
+  32          void Key_Proc()
+  33          {
+  34   1              if(Key_Slow)return;
+  35   1              Key_Slow=1;
+  36   1              
+  37   1              Key_Val=Key_Read();
+  38   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  39   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  40   1              Key_Old=Key_Val;
+  41   1              
+  42   1              switch(Key_Down)
+  43   1              {
+  44   2                      case 4:
+  45   2                              Change_Mode=0;
+  46   2                              if(++Seg_Show_Mode==2)Seg_Show_Mode=0;
+  47   2                      break;
+  48   2                      case 5:
+  49   2                              Change_Mode=1;
+  50   2                              Change_Flag=1;
+  51   2                      break;
+  52   2                      case 9:
+  53   2                              Change_Mode=0;
+  54   2                              Seg_Show_Mode=0;
+C51 COMPILER V9.54   MAIN                                                                  04/04/2025 22:40:09 PAGE 2   
+
+  55   2                              Change_Flag=0;
+  56   2                      break;
+  57   2              }
+  58   1      }
+  59          /*数码管控制区域*/
+  60          void Seg_Proc()
+  61          {
+  62   1              if(Seg_Slow)return;
+  63   1              Seg_Slow=1;
+  64   1              
+  65   1              
+  66   1              Temperature=Temperature_Read();
+  67   1              Temperature_Int=(unsigned char)Temperature;
+  68   1              Cycle=1000000/Frequency;
+  69   1              
+  70   1              switch(Seg_Show_Mode)
+  71   1              {
+  72   2                      case 0:
+  73   2                              Seg_Point[6]=0;
+  74   2                              Seg_Buf[0]=11;
+  75   2                              if(Change_Mode==0)
+  76   2                              {
+  77   3                                      Seg_Buf[1]=Frequency/1000000%10;
+  78   3                                      Seg_Buf[2]=Frequency/100000%10;
+  79   3                                      Seg_Buf[3]=Frequency/10000%10;
+  80   3                                      Seg_Buf[4]=Frequency/1000%10;
+  81   3                                      Seg_Buf[5]=Frequency/100%10;
+  82   3                                      Seg_Buf[6]=Frequency/10%10;
+  83   3                                      Seg_Buf[7]=Frequency/1%10;
+  84   3                              }
+  85   2                              else
+  86   2                              {
+  87   3                                      Seg_Buf[1]=Cycle/1000000%10;
+  88   3                                      Seg_Buf[2]=Cycle/100000%10;
+  89   3                                      Seg_Buf[3]=Cycle/10000%10;
+  90   3                                      Seg_Buf[4]=Cycle/1000%10;
+  91   3                                      Seg_Buf[5]=Cycle/100%10;
+  92   3                                      Seg_Buf[6]=Cycle/10%10;
+  93   3                                      Seg_Buf[7]=Cycle/1%10;
+  94   3                              }
+  95   2                              for(j=1;j<7;j++)
+  96   2                              {
+  97   3                                      if(Seg_Buf[j]!=0)break;
+  98   3                                      Seg_Buf[j]=10;
+  99   3                              }
+ 100   2                      break;
+ 101   2                      case 1:
+ 102   2                              Seg_Buf[0]=12;
+ 103   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=10;
+ 104   2                              if(Change_Mode==0)
+ 105   2                              {
+ 106   3                                      Seg_Buf[5]=Temperature<10?10:(unsigned char)(Temperature)/10%10;
+ 107   3                                      Seg_Buf[6]=(unsigned char)(Temperature)/1%10;
+ 108   3                                      Seg_Point[6]=1;
+ 109   3                                      Seg_Buf[7]=(unsigned int)(Temperature*10)%10;
+ 110   3                              }
+ 111   2                              else
+ 112   2                              {
+ 113   3                                      Seg_Buf[5]=10;
+ 114   3                                      Seg_Buf[6]=Temperature_Int<10?10:Temperature_Int/10%10;
+ 115   3                                      Seg_Point[6]=0;
+ 116   3                                      Seg_Buf[7]=Temperature_Int/1%10;
+C51 COMPILER V9.54   MAIN                                                                  04/04/2025 22:40:09 PAGE 3   
+
+ 117   3                              }
+ 118   2                      break;
+ 119   2              }
+ 120   1      }
+ 121          /*Led控制区域*/
+ 122          void Led_Proc()
+ 123          {
+ 124   1              Beeper_Buf=Relay_Buf=0;
+ 125   1              Led_Buf[0]=Seg_Show_Mode==0?1:0;
+ 126   1              Led_Buf[1]=Seg_Show_Mode==1?1:0;
+ 127   1              Led_Buf[2]=Change_Flag;
+ 128   1              Led_Buf[7]=Temperature>30?Time_100ms_Flag:0;
+ 129   1      }
+ 130          /*定时器0区域*/
+ 131          void Timer0_Init(void)          //1微秒@12.000MHz
+ 132          {
+ 133   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 134   1              TMOD &= 0xF0;                   //设置定时器模式
+ 135   1              TMOD |= 0x05;                   //设置定时器模式
+ 136   1              TL0 = 0x00;                             //设置定时初始值
+ 137   1              TH0 = 0x00;                             //设置定时初始值
+ 138   1              TF0 = 0;                                //清除TF0标志
+ 139   1              TR0 = 1;                                //定时器0开始计时
+ 140   1      }
+ 141          /*定时器1区域*/
+ 142          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 143          {
+ 144   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 145   1              TMOD &= 0x0F;                   //设置定时器模式
+ 146   1              TL1 = 0x18;                             //设置定时初始值
+ 147   1              TH1 = 0xFC;                             //设置定时初始值
+ 148   1              TF1 = 0;                                //清除TF1标志
+ 149   1              TR1 = 1;                                //定时器1开始计时
+ 150   1              ET1 = 1;                                //使能定时器1中断
+ 151   1              EA=1;
+ 152   1      }
+ 153          void Timer1_Isr(void) interrupt 3
+ 154          {
+ 155   1              if(++Key_Slow==20)Key_Slow=0;
+ 156   1              if(++Seg_Slow==90)Seg_Slow=0;
+ 157   1      
+ 158   1              if(++Time_F_1s==100)
+ 159   1              {
+ 160   2                      Time_F_1s=0;
+ 161   2                      Frequency=(TH0<<8)|TL0;
+ 162   2                      Frequency=Frequency*10;
+ 163   2                      TH0=TL0=0;
+ 164   2              }
+ 165   1              
+ 166   1              if(Change_Flag==1)
+ 167   1              {
+ 168   2                      if(++Time_1000ms==1000)
+ 169   2                      {
+ 170   3                              Time_1000ms=0;
+ 171   3                              Change_Flag=0;
+ 172   3                      }
+ 173   2              }
+ 174   1              
+ 175   1              if(Temperature>30)
+ 176   1              {
+ 177   2                      if(++Time_100ms==100)
+ 178   2                      {
+C51 COMPILER V9.54   MAIN                                                                  04/04/2025 22:40:09 PAGE 4   
+
+ 179   3                              Time_100ms=0;
+ 180   3                              Time_100ms_Flag^=1;
+ 181   3                      }
+ 182   2              }
+ 183   1              
+ 184   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 185   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 186   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 187   1              Beeper(Beeper_Buf);
+ 188   1              Relay(Relay_Buf);
+ 189   1              
+ 190   1      }
+ 191          /*初始化区域*/
+ 192          void Init_Proc()
+ 193          {
+ 194   1              while(Temperature_Read()==85);
+ 195   1              Sys_Init();
+ 196   1              Timer0_Init();
+ 197   1              Timer1_Init();
+ 198   1      }
+ 199          /*主函数区域*/
+ 200          void main()
+ 201          {
+ 202   1              Init_Proc();
+ 203   1              while(1)
+ 204   1              {
+ 205   2                      Key_Proc();
+ 206   2                      Seg_Proc();
+ 207   2                      Led_Proc();
+ 208   2              }
+ 209   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1142    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     50    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

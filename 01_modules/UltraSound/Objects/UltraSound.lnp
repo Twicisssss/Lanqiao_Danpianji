@@ -1,0 +1,8 @@
+".\Objects\main.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj",
+".\Objects\UltraSound.obj" 
+TO ".\Objects\UltraSound" 
+PRINT(".\Listings\UltraSound.m51") RAMSIZE(256) 

@@ -1,0 +1,220 @@
+C51 COMPILER V9.54   MAIN                                                                  04/03/2025 13:56:21 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <Ultrasound.H>
+   8          /*变量声明区域*/
+   9          idata unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+  10          idata unsigned char Seg_Slow,Seg_Pos;
+  11          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10},Seg_Point[8]={0,0,0,0,0,0,0,0};
+  12          idata unsigned char Beeper_Buf=0,Relay_Buf=0,Led_Buf[8]={0,0,0,0,0,0,0,0};
+  13          idata unsigned char i;
+  14          
+  15          idata unsigned char Seg_Show_Mode=0;//【0-频率】【1-距离】
+  16          idata unsigned char US_Mode=0;//【0-频率控制】【1-按键控制】
+  17          idata bit US_Dis_Once_Flag=0;
+  18          
+  19          idata unsigned char US_Distance;
+  20          idata unsigned int Time_F_1s;
+  21          idata unsigned int Frequency;
+  22          
+  23          idata unsigned char Time_100ms;
+  24          idata bit Time_100ms_Flag;
+  25          /*按键控制区域*/
+  26          void Key_Proc()
+  27          {
+  28   1              if(Key_Slow)return;
+  29   1              Key_Slow=1;
+  30   1              
+  31   1              Key_Val=Key_Read();
+  32   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  33   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  34   1              Key_Old=Key_Val;
+  35   1              
+  36   1              switch(Key_Down)
+  37   1              {
+  38   2                      case 4:
+  39   2                              if(++Seg_Show_Mode==2)Seg_Show_Mode=0;
+  40   2                      break;
+  41   2                      case 5:
+  42   2                              US_Distance=0;
+  43   2                              if(++US_Mode==2)
+  44   2                                      US_Mode=0;
+  45   2                      break;
+  46   2                      case 8:
+  47   2                              if(US_Mode==1)
+  48   2                              {
+  49   3                                      US_Dis_Once_Flag=1;
+  50   3                              }
+  51   2                      break;
+  52   2              }
+  53   1      }
+  54          /*数码管控制区域*/
+C51 COMPILER V9.54   MAIN                                                                  04/03/2025 13:56:21 PAGE 2   
+
+  55          void Seg_Proc()
+  56          {
+  57   1              if(Seg_Slow)return;
+  58   1              Seg_Slow=1;
+  59   1              
+  60   1              if(US_Mode==0)
+  61   1              {
+  62   2                      if(Frequency>1000)
+  63   2                              US_Distance=US_Distance_Get();
+  64   2                      else
+  65   2                              US_Distance=0;
+  66   2              }
+  67   1              else
+  68   1              {
+  69   2                      if(US_Dis_Once_Flag==1)
+  70   2                      {
+  71   3                              US_Distance=US_Distance_Get();
+  72   3                              US_Dis_Once_Flag=0;
+  73   3                      }
+  74   2              }
+  75   1              
+  76   1              Seg_Buf[0]=11;
+  77   1              Seg_Buf[1]=Seg_Show_Mode+1;
+  78   1              switch(Seg_Show_Mode)
+  79   1              {
+  80   2                      case 0:
+  81   2                              Seg_Point[5]=0;
+  82   2                              Seg_Buf[2]=Frequency/100000%10;
+  83   2                              Seg_Buf[3]=Frequency/10000%10;
+  84   2                              Seg_Buf[4]=Frequency/1000%10;
+  85   2                              Seg_Buf[5]=Frequency/100%10;
+  86   2                              Seg_Buf[6]=Frequency/10%10;
+  87   2                              Seg_Buf[7]=Frequency/1%10;
+  88   2                              for(i=2;i<7;i++)
+  89   2                              {
+  90   3                                      if(Seg_Buf[i]!=0)break;
+  91   3                                      Seg_Buf[i]=10;
+  92   3                              }
+  93   2                      break;
+  94   2                      case 1:
+  95   2                              Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=10;
+  96   2                              Seg_Buf[5]=US_Distance/100%10;
+  97   2                              Seg_Point[5]=(US_Distance==0)?0:1;
+  98   2                              Seg_Buf[6]=US_Distance/10%10;
+  99   2                              Seg_Buf[7]=US_Distance/1%10;
+ 100   2                      break;
+ 101   2              }
+ 102   1      }
+ 103          /*Led控制区域*/
+ 104          void Led_Proc()
+ 105          {
+ 106   1              Beeper_Buf=0;
+ 107   1              Led_Buf[0]=Seg_Show_Mode==0?1:0;
+ 108   1              Led_Buf[1]=Seg_Show_Mode==1?1:0;
+ 109   1              
+ 110   1              Led_Buf[2]=US_Mode==0?1:0;
+ 111   1              
+ 112   1              Relay_Buf=(US_Distance>65);
+ 113   1              Led_Buf[7]=(Relay_Buf==1)?Time_100ms_Flag:0;
+ 114   1      }
+ 115          /*定时器0区域*/
+ 116          void Timer0_Init(void)          //1毫秒@12.000MHz
+C51 COMPILER V9.54   MAIN                                                                  04/03/2025 13:56:21 PAGE 3   
+
+ 117          {
+ 118   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 119   1              TMOD &= 0xF0;                   //设置定时器模式
+ 120   1              TMOD |= 0x05;                   //设置定时器模式
+ 121   1              TL0 = 0x00;                             //设置定时初始值
+ 122   1              TH0 = 0x00;                             //设置定时初始值
+ 123   1              TF0 = 0;                                //清除TF0标志
+ 124   1              TR0 = 1;                                //定时器0开始计时
+ 125   1      }
+ 126          /*定时器1区域*/
+ 127          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 128          {
+ 129   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 130   1              TMOD &= 0x0F;                   //设置定时器模式
+ 131   1              TL1 = 0x18;                             //设置定时初始值
+ 132   1              TH1 = 0xFC;                             //设置定时初始值
+ 133   1              TF1 = 0;                                //清除TF1标志
+ 134   1              TR1 = 1;                                //定时器1开始计时
+ 135   1              ET1 = 1;                                //使能定时器1中断
+ 136   1              EA=1;
+ 137   1      }
+ 138          void Timer1_Isr(void) interrupt 3
+ 139          {
+ 140   1              if(++Key_Slow==20)Key_Slow=0;
+ 141   1              if(++Seg_Slow==90)Seg_Slow=0;
+ 142   1              
+ 143   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 144   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 145   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 146   1              Beeper(Beeper_Buf);
+ 147   1              Relay(Relay_Buf);
+ 148   1              
+ 149   1              
+ 150   1      //      if(++Time_F_1s==1000)
+ 151   1      //      {
+ 152   1      //              Time_F_1s=0;
+ 153   1      //              Frequency=(TH0<<8)|TL0;
+ 154   1      //              TH0=TL0=0;
+ 155   1      //      }
+ 156   1              if(++Time_F_1s==100)
+ 157   1              {
+ 158   2                      Time_F_1s=0;
+ 159   2                      Frequency=((TH0<<8)|TL0);
+ 160   2                      Frequency=Frequency*10;
+ 161   2                      TH0=TL0=0;
+ 162   2              }
+ 163   1              
+ 164   1              if(Relay_Buf==1)
+ 165   1              {
+ 166   2                      if(++Time_100ms==100)
+ 167   2                      {
+ 168   3                              Time_100ms=0;
+ 169   3                              Time_100ms_Flag^=1;
+ 170   3                      }
+ 171   2              }
+ 172   1      }
+ 173          /*初始化区域*/
+ 174          void Init_Proc()
+ 175          {
+ 176   1              Sys_Init();
+ 177   1              Timer0_Init();
+ 178   1              Timer1_Init();
+C51 COMPILER V9.54   MAIN                                                                  04/03/2025 13:56:21 PAGE 4   
+
+ 179   1      }
+ 180          /*主函数区域*/
+ 181          void main()
+ 182          {
+ 183   1              Init_Proc();
+ 184   1              while(1)
+ 185   1              {
+ 186   2                      Key_Proc();
+ 187   2                      Seg_Proc();
+ 188   2                      Led_Proc();
+ 189   2              }
+ 190   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    779    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     42    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

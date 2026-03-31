@@ -1,0 +1,9 @@
+".\Objects\STARTUP.obj",
+".\Objects\mian.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj",
+".\Objects\iic.obj" 
+TO ".\Objects\No12_P2" 
+PRINT(".\Listings\No12_P2.m51") RAMSIZE(256) 

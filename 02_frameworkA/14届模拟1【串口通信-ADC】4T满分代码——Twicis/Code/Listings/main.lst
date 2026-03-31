@@ -1,0 +1,219 @@
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:10:38 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <iic.H>
+   8          #include <Uart.H>
+   9          /*变量声明区域*/
+  10          idata unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+  11          idata unsigned char Seg_Slow,Seg_Pos;
+  12          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10},Seg_Point[8]={0,0,0,0,0,0,0,0};
+  13          idata unsigned char Beeper_Buf=0,Relay_Buf=0,Led_Buf[8]={0,0,0,0,0,0,0,0};
+  14          pdata unsigned char Uart_Buf[10]={0};
+  15          idata unsigned char Uart_Index;
+  16          idata unsigned char Uart_Rx_Flag;
+  17          idata unsigned char Uart_Tick;
+  18          
+  19          idata unsigned char Seg_Show_Mode=0;//【0-噪音】【1-参数】
+  20          
+  21          idata float ADC_Rb2_Voltage;
+  22          idata float Noise;
+  23          idata unsigned char Noise_Parameter=65;
+  24          
+  25          idata unsigned char Time_100ms;
+  26          idata bit Time_100ms_Flag;
+  27          /*按键控制区域*/
+  28          void Key_Proc()
+  29          {
+  30   1              if(Key_Slow)return;
+  31   1              Key_Slow=1;
+  32   1              
+  33   1              Key_Val=Key_Read();
+  34   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  35   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  36   1              Key_Old=Key_Val;
+  37   1              
+  38   1              switch(Key_Down)
+  39   1              {
+  40   2                      case 12:
+  41   2                              if(++Seg_Show_Mode==2)Seg_Show_Mode=0;
+  42   2                      break;
+  43   2                      case 16:
+  44   2                              if(Seg_Show_Mode==1)
+  45   2                              {
+  46   3                                      Noise_Parameter+=5;
+  47   3                                      if(Noise_Parameter==95)
+  48   3                                              Noise_Parameter=90;
+  49   3                              }
+  50   2                      break;
+  51   2                      case 17:
+  52   2                              if(Seg_Show_Mode==1)
+  53   2                              {
+  54   3                                      Noise_Parameter-=5;
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:10:38 PAGE 2   
+
+  55   3                                      if(Noise_Parameter==251)
+  56   3                                              Noise_Parameter=0;
+  57   3                              }
+  58   2                      break;
+  59   2              }
+  60   1      }
+  61          /*数码管控制区域*/
+  62          void Seg_Proc()
+  63          {
+  64   1              if(Seg_Slow)return;
+  65   1              Seg_Slow=1;
+  66   1              
+  67   1              ADC_Rb2_Voltage=AD_Read(0x03)/51.0;
+  68   1              if(ADC_Rb2_Voltage>=0 && ADC_Rb2_Voltage<=5)
+  69   1                      Noise=ADC_Rb2_Voltage*18;
+  70   1              else
+  71   1                      Noise=90;
+  72   1              
+  73   1              Seg_Buf[0]=11;
+  74   1              Seg_Buf[1]=Seg_Show_Mode+1;
+  75   1              switch(Seg_Show_Mode)
+  76   1              {
+  77   2                      case 0:
+  78   2                              Seg_Buf[5]=(unsigned char)(Noise)/10%10;
+  79   2                              Seg_Buf[6]=(unsigned char)(Noise)/1%10;
+  80   2                              Seg_Point[6]=1;
+  81   2                              Seg_Buf[7]=(unsigned int)(Noise*10)%10;
+  82   2                              if(Seg_Buf[5]==0)Seg_Buf[5]=10;
+  83   2                      break;
+  84   2                      case 1:
+  85   2                              Seg_Point[6]=0;
+  86   2                              Seg_Buf[5]=10;
+  87   2                              Seg_Buf[6]=Noise_Parameter/10%10;
+  88   2                              Seg_Buf[7]=Noise_Parameter/1%10;
+  89   2                              if(Seg_Buf[6]==0)Seg_Buf[6]=10;
+  90   2                      break;
+  91   2              }
+  92   1      }
+  93          /*Led控制区域*/
+  94          void Led_Proc()
+  95          {
+  96   1              Beeper_Buf=Relay_Buf=0;
+  97   1              Led_Buf[0]=Seg_Show_Mode==0?1:0;
+  98   1              Led_Buf[1]=Seg_Show_Mode==1?1:0;
+  99   1              Led_Buf[7]=(Noise>Noise_Parameter)?Time_100ms_Flag:0;
+ 100   1      }
+ 101          /*串口控制区域*/
+ 102          void Uart_Proc()
+ 103          {
+ 104   1              if(Uart_Index==0)return;
+ 105   1              if(Uart_Tick>=10)
+ 106   1              {
+ 107   2                      Uart_Tick=0;
+ 108   2                      
+ 109   2                      if(Seg_Show_Mode==0)
+ 110   2                      {
+ 111   3                              if(strcmp(Uart_Buf, "Return") == 0)
+ 112   3                                      printf("Noises:%.1fdB", Noise);
+ 113   3                      }
+ 114   2                      
+ 115   2                      memset(Uart_Buf,0,10);
+ 116   2                      Uart_Index=0;
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:10:38 PAGE 3   
+
+ 117   2              }
+ 118   1      }
+ 119          /*串口中断区域*/
+ 120          void Uart1_Isr(void) interrupt 4
+ 121          {
+ 122   1              if (RI)                         //检测串口1接收中断
+ 123   1              {
+ 124   2                      Uart_Rx_Flag=1;
+ 125   2                      Uart_Tick=0;
+ 126   2                      Uart_Buf[Uart_Index++]=SBUF;
+ 127   2                      RI = 0;                 //清除串口1接收中断请求位
+ 128   2                      if(Uart_Index>10)
+ 129   2                      {
+ 130   3                              Uart_Index=0;
+ 131   3                              memset(Uart_Buf,0,10);
+ 132   3                      }
+ 133   2              }
+ 134   1      }
+ 135          /*定时器1区域*/
+ 136          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 137          {
+ 138   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 139   1              TMOD &= 0x0F;                   //设置定时器模式
+ 140   1              TL1 = 0x18;                             //设置定时初始值
+ 141   1              TH1 = 0xFC;                             //设置定时初始值
+ 142   1              TF1 = 0;                                //清除TF1标志
+ 143   1              TR1 = 1;                                //定时器1开始计时
+ 144   1              ET1 = 1;                                //使能定时器1中断
+ 145   1              EA=1;
+ 146   1      }
+ 147          void Timer1_Isr(void) interrupt 3
+ 148          {
+ 149   1              if(++Key_Slow==20)Key_Slow=0;
+ 150   1              if(++Seg_Slow==90)Seg_Slow=0;
+ 151   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 152   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 153   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 154   1              Beeper(Beeper_Buf);
+ 155   1              Relay(Relay_Buf);
+ 156   1              
+ 157   1              if(Noise>Noise_Parameter)
+ 158   1              {
+ 159   2                      if(++Time_100ms==100)
+ 160   2                      {
+ 161   3                              Time_100ms=0;
+ 162   3                              Time_100ms_Flag^=1;
+ 163   3                      }
+ 164   2              }
+ 165   1              else
+ 166   1                      Time_100ms=0;
+ 167   1              
+ 168   1              
+ 169   1              if(Uart_Rx_Flag==1)Uart_Tick++;
+ 170   1      }
+ 171          /*初始化区域*/
+ 172          void Init_Proc()
+ 173          {
+ 174   1              Sys_Init();
+ 175   1              Uart1_Init();
+ 176   1              Timer1_Init();
+ 177   1      }
+ 178          /*主函数区域*/
+C51 COMPILER V9.54   MAIN                                                                  04/05/2025 04:10:38 PAGE 4   
+
+ 179          void main()
+ 180          {
+ 181   1              Init_Proc();
+ 182   1              while(1)
+ 183   1              {
+ 184   2                      Key_Proc();
+ 185   2                      Seg_Proc();
+ 186   2                      Led_Proc();
+ 187   2                      Uart_Proc();
+ 188   2              }
+ 189   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    820    ----
+   CONSTANT SIZE    =     21    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =     10    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     47    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

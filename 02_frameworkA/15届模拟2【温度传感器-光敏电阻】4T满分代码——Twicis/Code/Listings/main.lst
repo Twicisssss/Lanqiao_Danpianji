@@ -1,0 +1,184 @@
+C51 COMPILER V9.54   MAIN                                                                  04/01/2025 22:49:03 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <onewire.H>
+   8          #include <iic.H>
+   9          /*变量声明区域*/
+  10          idata unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+  11          idata unsigned char Seg_Slow,Seg_Pos;
+  12          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10},Seg_Point[8]={0,0,0,0,0,0,0,0};
+  13          idata unsigned char Beeper_Buf=0,Relay_Buf=0,Led_Buf[8]={0,0,0,0,0,0,0,0};
+  14          idata unsigned char i;
+  15          
+  16          idata unsigned char Seg_Show_Mode=0;//【0-模式界面】【1-输出界面】
+  17          idata unsigned char Ctrl_Mode=0;//【0-模式1温度控制】【1-模式2光照度控制】
+  18          
+  19          idata float Temperature;
+  20          idata unsigned char ADC_Light;
+  21          idata float DAC_Voltage;
+  22          /*按键控制区域*/
+  23          void Key_Proc()
+  24          {
+  25   1              if(Key_Slow)return;
+  26   1              Key_Slow=1;
+  27   1              
+  28   1              Key_Val=Key_Read();
+  29   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  30   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  31   1              Key_Old=Key_Val;
+  32   1              
+  33   1              switch(Key_Down)
+  34   1              {
+  35   2                      case 4:
+  36   2                              if(Seg_Show_Mode==0)//【0-模式界面】
+  37   2                              {
+  38   3                                      if(++Ctrl_Mode==2)Ctrl_Mode=0;
+  39   3                              }
+  40   2                      break;
+  41   2                      case 5:
+  42   2                              if(++Seg_Show_Mode==2)Seg_Show_Mode=0;
+  43   2                      break;
+  44   2              }
+  45   1      }
+  46          /*数码管控制区域*/
+  47          void Seg_Proc()
+  48          {
+  49   1              if(Seg_Slow)return;
+  50   1              Seg_Slow=1;
+  51   1              
+  52   1              Temperature=Temperature_Read();
+  53   1              ADC_Light=AD_Read(0x01);
+  54   1              if(Ctrl_Mode==0)//【0-模式1温度控制】
+C51 COMPILER V9.54   MAIN                                                                  04/01/2025 22:49:03 PAGE 2   
+
+  55   1              {
+  56   2                      if(Temperature>10 && Temperature<40)
+  57   2                              DAC_Voltage=(4*Temperature-10)/30.0;
+  58   2                      else if(Temperature<=10)
+  59   2                              DAC_Voltage=1.0;
+  60   2                      else if(Temperature>=40)
+  61   2                              DAC_Voltage=5.0;
+  62   2              }
+  63   1              else//【1-模式2光照度控制】
+  64   1              {
+  65   2                      if(ADC_Light>10 && ADC_Light<240)
+  66   2                              DAC_Voltage=(4*ADC_Light+190)/230.0;
+  67   2                      else if(ADC_Light<=10)
+  68   2                              DAC_Voltage=1.0;
+  69   2                      else if(ADC_Light>=240)
+  70   2                              DAC_Voltage=5.0;
+  71   2              }
+  72   1              
+  73   1              switch(Seg_Show_Mode)
+  74   1              {
+  75   2                      case 0://【0-模式界面】
+  76   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=10;
+  77   2                      if(Ctrl_Mode==0)//【0-模式1温度控制】
+  78   2                      {
+  79   3                              Seg_Buf[0]=1;
+  80   3                              Seg_Buf[5]=(unsigned char)(Temperature)/10%10;
+  81   3                              Seg_Buf[6]=(unsigned char)(Temperature)/1%10;
+  82   3                              Seg_Point[6]=1;
+  83   3                              Seg_Buf[7]=(unsigned int)(Temperature*10)%10;
+  84   3                      }
+  85   2                      else//【1-模式2光照度控制】
+  86   2                      {
+  87   3                              Seg_Point[6]=0;
+  88   3                              Seg_Buf[0]=2;
+  89   3                              Seg_Buf[5]=ADC_Light/100%10;
+  90   3                              Seg_Buf[6]=ADC_Light/10%10;
+  91   3                              Seg_Buf[7]=ADC_Light/1%10;
+  92   3                              for(i=5;i<7;i++)
+  93   3                              {
+  94   4                                      if(Seg_Buf[i]!=0)break;
+  95   4                                      Seg_Buf[i]=10;
+  96   4                              }
+  97   3                      }
+  98   2                      break;
+  99   2                      case 1://【1-输出界面】
+ 100   2                              Seg_Buf[0]=11;
+ 101   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=10;
+ 102   2                              Seg_Buf[6]=(unsigned char)(DAC_Voltage)%10;
+ 103   2                              Seg_Point[6]=1;
+ 104   2                              Seg_Buf[7]=(unsigned char)(DAC_Voltage*10)%10;
+ 105   2                      break;
+ 106   2              }
+ 107   1      }
+ 108          /*Led控制区域*/
+ 109          void Led_Proc()
+ 110          {
+ 111   1              Beeper_Buf=Relay_Buf=0;
+ 112   1              Led_Buf[0]=Ctrl_Mode==0?1:0;
+ 113   1              Led_Buf[1]=Ctrl_Mode==1?1:0;
+ 114   1              DA_Write(DAC_Voltage*51.0);
+ 115   1      }
+ 116          /*定时器1区域*/
+C51 COMPILER V9.54   MAIN                                                                  04/01/2025 22:49:03 PAGE 3   
+
+ 117          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 118          {
+ 119   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 120   1              TMOD &= 0x0F;                   //设置定时器模式
+ 121   1              TL1 = 0x18;                             //设置定时初始值
+ 122   1              TH1 = 0xFC;                             //设置定时初始值
+ 123   1              TF1 = 0;                                //清除TF1标志
+ 124   1              TR1 = 1;                                //定时器1开始计时
+ 125   1              ET1 = 1;                                //使能定时器1中断
+ 126   1              EA=1;
+ 127   1      }
+ 128          void Timer1_Isr(void) interrupt 3
+ 129          {
+ 130   1              if(++Key_Slow==20)Key_Slow=0;
+ 131   1              if(++Seg_Slow==90)Seg_Slow=0;
+ 132   1              
+ 133   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 134   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 135   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 136   1              Beeper(Beeper_Buf);
+ 137   1              Relay(Relay_Buf);
+ 138   1      }
+ 139          /*初始化区域*/
+ 140          void Init_Proc()
+ 141          {
+ 142   1              Sys_Init();
+ 143   1              
+ 144   1              Timer1_Init();
+ 145   1      }
+ 146          /*主函数区域*/
+ 147          void main()
+ 148          {
+ 149   1              Init_Proc();
+ 150   1              while(1)
+ 151   1              {
+ 152   2                      Key_Proc();
+ 153   2                      Seg_Proc();
+ 154   2                      Led_Proc();
+ 155   2              }
+ 156   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    779    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     45    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

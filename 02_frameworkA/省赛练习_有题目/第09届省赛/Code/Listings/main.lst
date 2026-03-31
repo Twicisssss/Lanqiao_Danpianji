@@ -1,0 +1,308 @@
+C51 COMPILER V9.54   MAIN                                                                  03/08/2025 17:02:52 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Key.H>
+   5          #include <Seg.H>
+   6          #include <Led.H>
+   7          #include <iic.H>
+   8          /*变量声明区域*/
+   9          unsigned char Key_Slow;
+  10          unsigned char Key_Val,Key_Down,Key_Up,Key_Old;
+  11          unsigned char Seg_Slow;
+  12          unsigned char Seg_Pos;
+  13          unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  14          unsigned char Seg_Point[8]={0,0,0,0,0,0,0,0};
+  15          unsigned char Led_Buf[8]={0,0,0,0,0,0,0,0};
+  16          
+  17          bit Led_System_State=0;//Led流转开始或停止状态
+  18          unsigned char Led_Run_Mode=0;//Led流转模式0123
+  19          unsigned char Led_Run_Pos=0;//Led流转位
+  20          unsigned char Seg_Show_Mode=0;//0-熄屏；1-选择；2-间隔
+  21          unsigned char Time_Brightness_Mode=0;//0-熄屏；1-亮度
+  22          
+  23          unsigned char Led_Brightness;//1-4
+  24          unsigned char AD_Read_Data;
+  25          unsigned char Led_Go_Mode_Index;//选择
+  26          unsigned int Led_Interval_Time[4]={400,500,600,700};
+  27          unsigned int Led_Interval_Time_Set[4]={400,500,600,700};
+  28          unsigned char Led_Interval_Time_EEPROM[4]={4,5,6,7};
+  29          
+  30          unsigned int Led_Light_Count=0;
+  31          unsigned int Time_800ms=0;
+  32          bit Time_800ms_Flag=0;
+  33          unsigned int Time_Xms=0;
+  34          
+  35          /*按键控制区域*/
+  36          void Key_Proc()
+  37          {
+  38   1              unsigned char i;
+  39   1              if(Key_Slow)return;
+  40   1              Key_Slow=1;
+  41   1              
+  42   1              Key_Val=Key_Read();
+  43   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  44   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  45   1              Key_Old=Key_Val;
+  46   1              
+  47   1              if(Seg_Show_Mode==0)
+  48   1              {
+  49   2                      if(Key_Old==4)
+  50   2                              Time_Brightness_Mode=1;
+  51   2                      else
+  52   2                              Time_Brightness_Mode=0;
+  53   2              }
+  54   1              
+C51 COMPILER V9.54   MAIN                                                                  03/08/2025 17:02:52 PAGE 2   
+
+  55   1              
+  56   1              switch(Key_Down)
+  57   1              {
+  58   2                      case 7://开始或停止Led流转
+  59   2                              Led_System_State^=1;
+  60   2                      break;
+  61   2                      case 6://进入设置界面
+  62   2                              if(Seg_Show_Mode==0)
+  63   2                              {
+  64   3                                      Led_Go_Mode_Index=0;
+  65   3                              }
+  66   2                              if(Seg_Show_Mode==1)
+  67   2                              {
+  68   3                                      for(i=0;i<4;i++)
+  69   3                                      {
+  70   4                                              Led_Interval_Time_Set[i]=Led_Interval_Time[i];
+  71   4                                      }
+  72   3                              }
+  73   2                              if(Seg_Show_Mode==2)
+  74   2                              {
+  75   3                                      for(i=0;i<4;i++)
+  76   3                                      {
+  77   4                                              Led_Interval_Time[i]=Led_Interval_Time_Set[i];
+  78   4                                              Led_Interval_Time_EEPROM[i]=Led_Interval_Time[i]/100;
+  79   4                                      }
+  80   3                                      EEPROM_Write(Led_Interval_Time_EEPROM,0,4);
+  81   3                              }
+  82   2                              if(++Seg_Show_Mode==3)Seg_Show_Mode=0;
+  83   2                      break;
+  84   2                      case 5://加按键
+  85   2                              if(Seg_Show_Mode==1)
+  86   2                              {
+  87   3                                      if(++Led_Go_Mode_Index==4)Led_Go_Mode_Index=0;
+  88   3                              }
+  89   2                              else if(Seg_Show_Mode==2)
+  90   2                              {
+  91   3                                      Led_Interval_Time_Set[Led_Go_Mode_Index]+=100;
+  92   3                                      if(Led_Interval_Time_Set[Led_Go_Mode_Index]>1200)Led_Interval_Time_Set[Led_Go_Mode_Index]=1200;
+  93   3                              }
+  94   2                      break;
+  95   2                      case 4://减按键
+  96   2                              if(Seg_Show_Mode==1)
+  97   2                              {
+  98   3                                      if(--Led_Go_Mode_Index==255)Led_Go_Mode_Index=3;
+  99   3                              }
+ 100   2                              else if(Seg_Show_Mode==2)
+ 101   2                              {
+ 102   3                                      Led_Interval_Time_Set[Led_Go_Mode_Index]-=100;
+ 103   3                                      if(Led_Interval_Time_Set[Led_Go_Mode_Index]<400)Led_Interval_Time_Set[Led_Go_Mode_Index]=400;
+ 104   3                              }
+ 105   2                      break;
+ 106   2              }
+ 107   1      }
+ 108          /*数码管显示区域*/
+ 109          void Seg_Proc()
+ 110          {
+ 111   1              if(Seg_Slow)return;
+ 112   1              Seg_Slow=1;
+ 113   1              
+ 114   1              AD_Read_Data=AD_Read(0x03);
+ 115   1              Led_Brightness=(AD_Read_Data/65)+1;
+ 116   1              
+C51 COMPILER V9.54   MAIN                                                                  03/08/2025 17:02:52 PAGE 3   
+
+ 117   1              if(Time_Brightness_Mode==0)
+ 118   1              {
+ 119   2                      switch(Seg_Show_Mode)
+ 120   2                      {
+ 121   3                              case 0:
+ 122   3                                      Seg_Buf[0]=10;Seg_Buf[1]=10;Seg_Buf[2]=10;Seg_Buf[3]=10;Seg_Buf[4]=10;Seg_Buf[5]=10;Seg_Buf[6]=10;Seg_
+             -Buf[7]=10;
+ 123   3                              break;
+ 124   3                              case 1:
+ 125   3                                      Seg_Buf[0]=11;
+ 126   3                                      Seg_Buf[1]=Time_800ms_Flag?10:(Led_Go_Mode_Index+1);
+ 127   3                                      Seg_Buf[2]=11;
+ 128   3                                      Seg_Buf[3]=10;
+ 129   3                              
+ 130   3                                      Seg_Buf[4]=Led_Interval_Time[Led_Go_Mode_Index]/1000%10;
+ 131   3                                      Seg_Buf[5]=Led_Interval_Time[Led_Go_Mode_Index]/100%10;
+ 132   3                                      Seg_Buf[6]=Led_Interval_Time[Led_Go_Mode_Index]/10%10;
+ 133   3                                      Seg_Buf[7]=Led_Interval_Time[Led_Go_Mode_Index]/1%10;
+ 134   3                                      if(Seg_Buf[4]==0)Seg_Buf[4]=10;
+ 135   3                              break;
+ 136   3                              case 2:
+ 137   3                                      Seg_Buf[0]=11;
+ 138   3                                      Seg_Buf[1]=Led_Go_Mode_Index+1;
+ 139   3                                      Seg_Buf[2]=11;
+ 140   3                                      Seg_Buf[3]=10;
+ 141   3                              
+ 142   3                                      Seg_Buf[4]=Time_800ms_Flag?10:(Led_Interval_Time_Set[Led_Go_Mode_Index]/1000%10);
+ 143   3                                      Seg_Buf[5]=Time_800ms_Flag?10:(Led_Interval_Time_Set[Led_Go_Mode_Index]/100%10);
+ 144   3                                      Seg_Buf[6]=Time_800ms_Flag?10:(Led_Interval_Time_Set[Led_Go_Mode_Index]/10%10);
+ 145   3                                      Seg_Buf[7]=Time_800ms_Flag?10:(Led_Interval_Time_Set[Led_Go_Mode_Index]/1%10);
+ 146   3                                      if(Seg_Buf[4]==0)Seg_Buf[4]=10;
+ 147   3                              break;
+ 148   3                      }
+ 149   2              }
+ 150   1              if(Time_Brightness_Mode==1)
+ 151   1              {
+ 152   2                      Seg_Buf[0]=10;Seg_Buf[1]=10;Seg_Buf[2]=10;Seg_Buf[3]=10;Seg_Buf[4]=10;Seg_Buf[5]=10;
+ 153   2                      Seg_Buf[6]=11;
+ 154   2                      Seg_Buf[7]=Led_Brightness;
+ 155   2              }
+ 156   1      }
+ 157          /*Led显示区域*/
+ 158          void Led_Proc()
+ 159          {
+ 160   1              unsigned char i;
+ 161   1              if(Led_System_State==0)
+ 162   1              {
+ 163   2                      if(Time_Xms==Led_Interval_Time[Led_Run_Mode])
+ 164   2                      {
+ 165   3                              Time_Xms=0;
+ 166   3                              switch(Led_Run_Mode)
+ 167   3                              {
+ 168   4                                      case 0://L0→L1→L2→L3→L4→L5→L6→L7
+ 169   4                                              if(++Led_Run_Pos==8)
+ 170   4                                              {
+ 171   5                                                      Led_Run_Pos=7;
+ 172   5                                                      Led_Run_Mode=1;
+ 173   5                                              }
+ 174   4                                      break;
+ 175   4                                      case 1://L7→L6→L5→L4→L3→L2→L1→L0
+ 176   4                                              if(--Led_Run_Pos==255)
+ 177   4                                              {
+C51 COMPILER V9.54   MAIN                                                                  03/08/2025 17:02:52 PAGE 4   
+
+ 178   5                                                      Led_Run_Pos=7;
+ 179   5                                                      Led_Run_Mode=2;
+ 180   5                                              }
+ 181   4                                      break;
+ 182   4                                      case 2://L07→L16→L25→L34
+ 183   4                                              Led_Run_Pos+=9;
+ 184   4                                              if(Led_Run_Pos>34)
+ 185   4                                              {
+ 186   5                                                      Led_Run_Pos=34;
+ 187   5                                                      Led_Run_Mode=3;
+ 188   5                                              }
+ 189   4                                      break;
+ 190   4                                      case 3://L34→L25→L16→L07
+ 191   4                                              Led_Run_Pos-=9;
+ 192   4                                              if(Led_Run_Pos>200)
+ 193   4                                              {
+ 194   5                                                      Led_Run_Pos=0;
+ 195   5                                                      Led_Run_Mode=0;
+ 196   5                                              }
+ 197   4                                      break;
+ 198   4                              }
+ 199   3                      }       
+ 200   2              }
+ 201   1              if(Led_Run_Mode==0||Led_Run_Mode==1)
+ 202   1              {
+ 203   2                      for(i=0;i<8;i++)
+ 204   2                      {
+ 205   3                              Led_Buf[i]=(i==Led_Run_Pos);
+ 206   3                      }
+ 207   2              }
+ 208   1              else if(Led_Run_Mode==2||Led_Run_Mode==3)
+ 209   1              {
+ 210   2                      for(i=0;i<8;i++)
+ 211   2                      {
+ 212   3                              Led_Buf[i]=(i==(Led_Run_Pos/10)||i==(Led_Run_Pos%10));
+ 213   3                      }
+ 214   2              }
+ 215   1              
+ 216   1      }
+ 217          /*定时器0区域*/
+ 218          void Timer0_Init(void)          //1毫秒@12.000MHz
+ 219          {
+ 220   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 221   1              TMOD &= 0xF0;                   //设置定时器模式
+ 222   1              TL0 = 0x18;                             //设置定时初始值
+ 223   1              TH0 = 0xFC;                             //设置定时初始值
+ 224   1              TF0 = 0;                                //清除TF0标志
+ 225   1              TR0 = 1;                                //定时器0开始计时
+ 226   1              ET0 = 1;                                //使能定时器0中断
+ 227   1              EA=1;
+ 228   1      }
+ 229          void Timer0_Isr(void) interrupt 1
+ 230          {
+ 231   1              if(++Key_Slow==20)Key_Slow=0;
+ 232   1              if(++Seg_Slow==500)Seg_Slow=0;
+ 233   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 234   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 235   1              
+ 236   1              if(++Led_Light_Count==13)Led_Light_Count=1;
+ 237   1              if(Led_Light_Count<=(Led_Brightness*3))
+ 238   1                      Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 239   1              else
+C51 COMPILER V9.54   MAIN                                                                  03/08/2025 17:02:52 PAGE 5   
+
+ 240   1                      Led_Disp(Seg_Pos,0);
+ 241   1              
+ 242   1              if(++Time_800ms==800)
+ 243   1              {
+ 244   2                      Time_800ms=0;
+ 245   2                      Time_800ms_Flag^=1;
+ 246   2              }
+ 247   1              if(Led_System_State==1)
+ 248   1                      Time_Xms=0;
+ 249   1              else
+ 250   1                      Time_Xms++;
+ 251   1      }
+ 252          /*初始化区域*/
+ 253          void Init_Proc()
+ 254          {
+ 255   1              Sys_Init();
+ 256   1              EEPROM_Read(Led_Interval_Time_EEPROM,0,4);
+ 257   1              Led_Interval_Time[0]=Led_Interval_Time_Set[0]=Led_Interval_Time_EEPROM[0]*100;
+ 258   1              Led_Interval_Time[1]=Led_Interval_Time_Set[1]=Led_Interval_Time_EEPROM[1]*100;
+ 259   1              Led_Interval_Time[2]=Led_Interval_Time_Set[2]=Led_Interval_Time_EEPROM[2]*100;
+ 260   1              Led_Interval_Time[3]=Led_Interval_Time_Set[3]=Led_Interval_Time_EEPROM[3]*100;
+ 261   1              Timer0_Init();
+ 262   1      }
+ 263          /*主函数区域*/
+ 264          void main()
+ 265          {
+ 266   1              Init_Proc();
+ 267   1              while(1)
+ 268   1              {
+ 269   2                      Key_Proc();
+ 270   2                      Seg_Proc();
+ 271   2                      Led_Proc();
+ 272   2              }
+ 273   1      }
+ 274          
+ 275          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1283    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     64       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

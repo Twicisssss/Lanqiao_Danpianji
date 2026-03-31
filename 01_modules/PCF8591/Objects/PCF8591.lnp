@@ -1,0 +1,8 @@
+".\Objects\mian.obj",
+".\Objects\iic.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj" 
+TO ".\Objects\PCF8591" 
+PRINT(".\Listings\PCF8591.m51") RAMSIZE(256) 

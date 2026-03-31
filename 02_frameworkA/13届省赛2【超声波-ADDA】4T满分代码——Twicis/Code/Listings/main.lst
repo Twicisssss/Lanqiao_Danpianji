@@ -1,0 +1,266 @@
+C51 COMPILER V9.54   MAIN                                                                  03/28/2025 23:34:06 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Key.H>
+   6          #include <Seg.H>
+   7          #include <Ultrasound.H>
+   8          #include <iic.H>
+   9          /*变量声明区域*/
+  10          idata unsigned char Key_Slow,Key_Down,Key_Up,Key_Val,Key_Old;
+  11          idata unsigned char Seg_Slow,Seg_Pos;
+  12          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  13          idata unsigned char Seg_Point[8]={0,0,0,0,0,0,0,0};
+  14          idata unsigned char Led_Buf[8]={0,0,0,0,0,0,0,0};
+  15          idata bit Beeper_Buf=0;
+  16          idata bit Relay_Buf=0;
+  17          
+  18          idata unsigned char Seg_Show_Mode=0;//【0-电压】【1-测距】【2-参数】
+  19          idata unsigned char Parameter_Index=0;//【0-上限】【1-下限】
+  20          
+  21          idata float Voltage_RB2_ADC;
+  22          idata float Rb2_DAC_Voltage;
+  23          idata float Voltage_Parameter[2]={4.5,0.5};//参数实际值【0-上限】【1-下限】
+  24          idata float Voltage_Parameter_Set[2]={4.5,0.5};//参数修改值【0-上限】【1-下限】
+  25          
+  26          idata bit US_ON_OFF_Mode=0;//【0-关闭】【1-开启】
+  27          idata unsigned char US_Distance;
+  28          
+  29          idata unsigned char Time_100ms;
+  30          idata bit Time_100ms_Flag;
+  31          /*按键控制区域*/
+  32          void Key_Proc()
+  33          {
+  34   1              if(Key_Slow)return;
+  35   1              Key_Slow=1;
+  36   1              
+  37   1              Key_Val=Key_Read();
+  38   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  39   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  40   1              Key_Old=Key_Val;
+  41   1              
+  42   1              switch(Key_Down)
+  43   1              {
+  44   2                      case 4:
+  45   2                              if(++Seg_Show_Mode==3)Seg_Show_Mode=0;
+  46   2                              if(Seg_Show_Mode==2)
+  47   2                              {
+  48   3                                      Parameter_Index=0;
+  49   3                                      Voltage_Parameter_Set[0]=Voltage_Parameter[0];
+  50   3                                      Voltage_Parameter_Set[1]=Voltage_Parameter[1];
+  51   3                              }
+  52   2                              else if(Seg_Show_Mode==0)
+  53   2                              {
+  54   3                                      if(Voltage_Parameter_Set[0]>Voltage_Parameter_Set[1])
+C51 COMPILER V9.54   MAIN                                                                  03/28/2025 23:34:06 PAGE 2   
+
+  55   3                                      {
+  56   4                                              Voltage_Parameter[0]=Voltage_Parameter_Set[0];
+  57   4                                              Voltage_Parameter[1]=Voltage_Parameter_Set[1];
+  58   4                                      }
+  59   3                              }
+  60   2                      break;
+  61   2                      case 5:
+  62   2                              if(Seg_Show_Mode==2)
+  63   2                                      Parameter_Index^=1;
+  64   2                      break;
+  65   2                      case 6:
+  66   2                              if(Seg_Show_Mode==2)
+  67   2                              {
+  68   3                                      if(Parameter_Index==0)
+  69   3                                      {
+  70   4                                              Voltage_Parameter_Set[0]+=0.5;
+  71   4                                              if(Voltage_Parameter_Set[0]==5.5)
+  72   4                                                      Voltage_Parameter_Set[0]=0.5;
+  73   4                                      }
+  74   3                                      else if(Parameter_Index==1)
+  75   3                                      {
+  76   4                                              Voltage_Parameter_Set[1]+=0.5;
+  77   4                                              if(Voltage_Parameter_Set[1]==5.5)
+  78   4                                                      Voltage_Parameter_Set[1]=0.5;
+  79   4                                      }
+  80   3                              }
+  81   2                      break;
+  82   2                      case 7:
+  83   2                              if(Seg_Show_Mode==2)
+  84   2                              {
+  85   3                                      if(Parameter_Index==0)
+  86   3                                      {
+  87   4                                              Voltage_Parameter_Set[0]-=0.5;
+  88   4                                              if(Voltage_Parameter_Set[0]==0.0)
+  89   4                                                      Voltage_Parameter_Set[0]=5.0;
+  90   4                                      }
+  91   3                                      else if(Parameter_Index==1)
+  92   3                                      {
+  93   4                                              Voltage_Parameter_Set[1]-=0.5;
+  94   4                                              if(Voltage_Parameter_Set[1]==0.0)
+  95   4                                                      Voltage_Parameter_Set[1]=5.0;
+  96   4                                      }
+  97   3                              }
+  98   2                      break;
+  99   2              }
+ 100   1      }
+ 101          /*数码管显示区域*/
+ 102          void Seg_Proc()
+ 103          {
+ 104   1              unsigned char i;
+ 105   1              if(Seg_Slow)return;
+ 106   1              Seg_Slow=1;
+ 107   1              
+ 108   1              
+ 109   1              Voltage_RB2_ADC=AD_Read(3)/51.0;
+ 110   1              if(Voltage_RB2_ADC>Voltage_Parameter[1] && Voltage_RB2_ADC<Voltage_Parameter[0])
+ 111   1                      US_ON_OFF_Mode=1;
+ 112   1              else
+ 113   1                      US_ON_OFF_Mode=0;
+ 114   1              
+ 115   1              
+ 116   1              if(US_ON_OFF_Mode==1)
+C51 COMPILER V9.54   MAIN                                                                  03/28/2025 23:34:06 PAGE 3   
+
+ 117   1              {
+ 118   2                      US_Distance=US_Distance_Get();
+ 119   2                      if(US_Distance>20 && US_Distance<80)
+ 120   2                              Rb2_DAC_Voltage=(2*US_Distance-10)/30.0;
+ 121   2                      else if(US_Distance<=20)
+ 122   2                              Rb2_DAC_Voltage=1.0;
+ 123   2                      else if(US_Distance>=80)
+ 124   2                              Rb2_DAC_Voltage=5.0;
+ 125   2              }
+ 126   1              else
+ 127   1                      Rb2_DAC_Voltage=0;
+ 128   1              DA_Write(Rb2_DAC_Voltage*51);
+ 129   1              
+ 130   1              switch(Seg_Show_Mode)
+ 131   1              {
+ 132   2                      case 0:
+ 133   2                              Seg_Point[3]=Seg_Point[6]=0;
+ 134   2                              Seg_Buf[0]=11;
+ 135   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=10;
+ 136   2                              Seg_Buf[5]=(unsigned char)(Voltage_RB2_ADC)%10;
+ 137   2                              Seg_Point[5]=1;
+ 138   2                              Seg_Buf[6]=(unsigned int)(Voltage_RB2_ADC*10)%10;
+ 139   2                              Seg_Buf[7]=(unsigned int)(Voltage_RB2_ADC*100)%10;
+ 140   2                      break;
+ 141   2                      case 1:
+ 142   2                              Seg_Point[5]=0;
+ 143   2                              Seg_Buf[0]=13;
+ 144   2                              Seg_Buf[1]=Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=10;
+ 145   2                              if(US_ON_OFF_Mode==1)
+ 146   2                              {
+ 147   3                                      Seg_Buf[5]=US_Distance/100%10;
+ 148   3                                      Seg_Buf[6]=US_Distance/10%10;
+ 149   3                                      Seg_Buf[7]=US_Distance/1%10;
+ 150   3                                      for(i=5;i<=7;i++)
+ 151   3                                      {
+ 152   4                                              if(Seg_Buf[i]==0 && Seg_Buf[i-1]==10)
+ 153   4                                                      Seg_Buf[i]=10;
+ 154   4                                      }
+ 155   3                              }
+ 156   2                              else
+ 157   2                              {
+ 158   3                                      Seg_Buf[5]=Seg_Buf[6]=Seg_Buf[7]=14;
+ 159   3                              }
+ 160   2                      break;
+ 161   2                      case 2:
+ 162   2                              Seg_Buf[0]=12;
+ 163   2                              Seg_Buf[1]=Seg_Buf[2]=10;
+ 164   2                              Seg_Buf[3]=(unsigned char)(Voltage_Parameter_Set[0])%10;
+ 165   2                              Seg_Point[3]=1;
+ 166   2                              Seg_Buf[4]=(unsigned char)(Voltage_Parameter_Set[0]*10)%10;
+ 167   2                              Seg_Buf[5]=10;
+ 168   2                              Seg_Buf[6]=(unsigned char)(Voltage_Parameter_Set[1])%10;
+ 169   2                              Seg_Point[6]=1;
+ 170   2                              Seg_Buf[7]=(unsigned char)(Voltage_Parameter_Set[1]*10)%10;
+ 171   2                      break;
+ 172   2              }
+ 173   1      }
+ 174          /*Led显示区域*/
+ 175          void Led_Proc()
+ 176          {
+ 177   1              Beeper_Buf=Relay_Buf=0;
+ 178   1              Led_Buf[0]=Seg_Show_Mode==0?1:0;//【0-电压】【1-测距】【2-参数】
+C51 COMPILER V9.54   MAIN                                                                  03/28/2025 23:34:06 PAGE 4   
+
+ 179   1              Led_Buf[1]=Seg_Show_Mode==1?1:0;//【0-电压】【1-测距】【2-参数】
+ 180   1              Led_Buf[2]=Seg_Show_Mode==2?1:0;//【0-电压】【1-测距】【2-参数】
+ 181   1              
+ 182   1              Led_Buf[7]=US_ON_OFF_Mode==1?Time_100ms_Flag:0;
+ 183   1      }
+ 184          /*定时器1区域*/
+ 185          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 186          {
+ 187   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 188   1              TMOD &= 0x0F;                   //设置定时器模式
+ 189   1              TL1 = 0x18;                             //设置定时初始值
+ 190   1              TH1 = 0xFC;                             //设置定时初始值
+ 191   1              TF1 = 0;                                //清除TF1标志
+ 192   1              TR1 = 1;                                //定时器1开始计时
+ 193   1              ET1 = 1;                                //使能定时器1中断
+ 194   1              EA=1;
+ 195   1      }
+ 196          void Timer1_Isr(void) interrupt 3
+ 197          {
+ 198   1              if(++Key_Slow==20)Key_Slow=0;
+ 199   1              if(++Seg_Slow==90)Seg_Slow=0;
+ 200   1              
+ 201   1              
+ 202   1              if(++Time_100ms==100)
+ 203   1              {
+ 204   2                      Time_100ms=0;
+ 205   2                      Time_100ms_Flag^=1;
+ 206   2              }
+ 207   1              
+ 208   1              
+ 209   1              
+ 210   1              
+ 211   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 212   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 213   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 214   1              Beeper(Beeper_Buf);
+ 215   1              Relay(Relay_Buf);
+ 216   1      }
+ 217          /*初始化区域*/
+ 218          void Init_Proc()
+ 219          {
+ 220   1              Sys_Init();
+ 221   1              
+ 222   1              Timer1_Init();
+ 223   1      }
+ 224          /*主函数区域*/
+ 225          void main()
+ 226          {
+ 227   1              Init_Proc();
+ 228   1              while(1)
+ 229   1              {
+ 230   2                      Key_Proc();
+ 231   2                      Seg_Proc();
+ 232   2                      Led_Proc();
+ 233   2              }
+ 234   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1165    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+C51 COMPILER V9.54   MAIN                                                                  03/28/2025 23:34:06 PAGE 5   
+
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     59    ----
+   BIT SIZE         =      4    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

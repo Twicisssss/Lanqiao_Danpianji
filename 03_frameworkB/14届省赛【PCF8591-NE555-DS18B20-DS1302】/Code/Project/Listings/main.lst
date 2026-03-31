@@ -1,0 +1,414 @@
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 21:11:01 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Source\User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Source\User;..\
+                    -Source\Driver) DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*==========头文件引用区域==========*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <init.H>
+   4          #include <led.H>
+   5          #include <seg.H>
+   6          #include <key.H>
+   7          #include <ds1302.H>
+   8          #include <onewire.H>
+   9          #include <iic.H>
+  10          /*==========变量声明区域==========*/
+  11          idata unsigned long int sys_tick;
+  12          idata unsigned char seg_pos;
+  13          idata unsigned char seg_buf[8]={10,10,10,10,10,10,10,10};
+  14          idata unsigned char led_buf[8]={0,0,0,0,0,0,0,0};
+  15          idata unsigned char key_val,key_old,key_down,key_up;
+  16          
+  17          idata unsigned char seg_show_mode=0;//【0-时间】【1-回显】【2-参数】【3-温湿度】
+  18          idata unsigned char echo_index=0;//【0-温度】【1-湿度】【2-时间】
+  19          
+  20          idata unsigned int ne555_frequency;
+  21          idata unsigned int ne555_cycle_1s;
+  22          
+  23          idata unsigned char rtc[3]={23,59,55};
+  24          idata float temperature;
+  25          idata float temperature_trigger;
+  26          idata float temperature_trigger_old;
+  27          idata float temperature_max;
+  28          idata float temperature_average;
+  29          idata float humidity;
+  30          idata float humidity_trigger;
+  31          idata float humidity_trigger_old;
+  32          idata float humidity_max;
+  33          idata float humidity_average;
+  34          idata unsigned char trigger_num=0;
+  35          idata unsigned char trigger_time[3]={23,59,55};
+  36          
+  37          idata unsigned char temperature_parameter=30;
+  38          
+  39          idata float ad_light_voltage;
+  40          idata bit day_night_state;      //【0-亮状态】【1-暗状态】
+  41          idata bit day_night_state_old;//【0-亮状态】【1-暗状态】
+  42          idata bit trigger_flag;
+  43          idata unsigned int time_3s;
+  44          
+  45          idata unsigned int time_2s;
+  46          idata bit key9_press_flag;
+  47          
+  48          idata unsigned char time_100ms;
+  49          idata bit time_100ms_flag;
+  50          /*==========数据获取区域==========*/
+  51          void adda_task(void)
+  52          {
+  53   1              if(trigger_flag==0)
+  54   1              {
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 21:11:01 PAGE 2   
+
+  55   2                      ad_light_voltage=ad_read(0x01)/51.0;
+  56   2                      
+  57   2                      if(ad_light_voltage<=1.0)
+  58   2                              day_night_state=1;
+  59   2                      else
+  60   2                              day_night_state=0;
+  61   2                      
+  62   2                      if(day_night_state_old==0 && day_night_state==1)
+  63   2                      {
+  64   3                              temperature_trigger_old=temperature_trigger;
+  65   3                              humidity_trigger_old=humidity_trigger;
+  66   3                              
+  67   3                              temperature_trigger=temperature;
+  68   3                              humidity_trigger=humidity;
+  69   3                              if(humidity!=0)
+  70   3                              {
+  71   4                                      if(temperature_max<temperature_trigger)
+  72   4                                              temperature_max=temperature_trigger;
+  73   4                                      temperature_average=(temperature_average*trigger_num+temperature_trigger)/(trigger_num+1);
+  74   4                                      
+  75   4                                      if(humidity_max<humidity_trigger)
+  76   4                                              humidity_max=humidity_trigger;
+  77   4                                      humidity_average=(humidity_average*trigger_num+humidity_trigger)/(trigger_num+1);
+  78   4                                      
+  79   4                                      trigger_time[0]=rtc[0];
+  80   4                                      trigger_time[1]=rtc[1];
+  81   4                                      trigger_time[2]=rtc[2];
+  82   4                                      trigger_num++;
+  83   4                              }
+  84   3                              trigger_flag=1;
+  85   3                      }
+  86   2                      else
+  87   2                              trigger_flag=0;
+  88   2                      
+  89   2                      day_night_state_old=day_night_state;
+  90   2              }
+  91   1      }
+  92          void rtc_task(void)
+  93          {
+  94   1              rtc_read(rtc);
+  95   1      }
+  96          void temperature_task(void)
+  97          {
+  98   1              temperature=temperature_read();
+  99   1      }
+ 100          /*==========按键控制区域==========*/
+ 101          void key_task(void)
+ 102          {
+ 103   1              key_val=key_read();
+ 104   1              key_down=key_val&(key_old^key_val);
+ 105   1              key_up=~key_val&(key_old^key_val);
+ 106   1              key_old=key_val;
+ 107   1              
+ 108   1              if(trigger_flag==0)
+ 109   1              {
+ 110   2                      if(seg_show_mode==1 && echo_index==2)
+ 111   2                      {
+ 112   3                              if(key_down==9)
+ 113   3                              {
+ 114   4                                      key9_press_flag=1;
+ 115   4                              }
+ 116   3                              if(key_up==9)
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 21:11:01 PAGE 3   
+
+ 117   3                              {
+ 118   4                                      if(time_2s>=2000)
+ 119   4                                      {
+ 120   5                                              temperature_trigger=temperature_trigger_old=temperature_max=temperature_average=0;
+ 121   5                                              humidity_trigger=humidity_trigger_old=humidity_max=humidity_average=0;
+ 122   5                                              trigger_num=0;
+ 123   5                                              trigger_time[0]=trigger_time[1]=trigger_time[2]=0;
+ 124   5                                      }
+ 125   4                                      time_2s=0;
+ 126   4                                      key9_press_flag=0;
+ 127   4                              }
+ 128   3                      }
+ 129   2              
+ 130   2                      switch(key_down)
+ 131   2                      {
+ 132   3                              case 4:
+ 133   3                                      seg_show_mode=(++seg_show_mode)%3;
+ 134   3                                      echo_index=0;
+ 135   3                              break;
+ 136   3                              case 5:
+ 137   3                                      if(seg_show_mode==1)
+ 138   3                                              echo_index=(++echo_index)%3;
+ 139   3                              break;
+ 140   3                              case 8://+
+ 141   3                                      if(seg_show_mode==2)
+ 142   3                                      {
+ 143   4                                              temperature_parameter++;
+ 144   4                                              if(temperature_parameter>=100)
+ 145   4                                                      temperature_parameter=99;
+ 146   4                                      }
+ 147   3                              break;
+ 148   3                              case 9://-
+ 149   3                                      if(seg_show_mode==2)
+ 150   3                                      {
+ 151   4                                              temperature_parameter--;
+ 152   4                                              if(temperature_parameter>=250)
+ 153   4                                                      temperature_parameter=0;
+ 154   4                                      }
+ 155   3                              break;
+ 156   3                      }
+ 157   2              }
+ 158   1      }
+ 159          /*==========数码管控制区域==========*/
+ 160          void seg_task(void)
+ 161          {
+ 162   1              if(trigger_flag==0)
+ 163   1              {
+ 164   2                      switch(seg_show_mode)
+ 165   2                      {
+ 166   3                              case 0:
+ 167   3                                      seg_buf[0]=rtc[0]/10;
+ 168   3                                      seg_buf[1]=rtc[0]%10;
+ 169   3                                      seg_buf[2]=11;
+ 170   3                                      seg_buf[3]=rtc[1]/10;
+ 171   3                                      seg_buf[4]=rtc[1]%10;
+ 172   3                                      seg_buf[5]=11;
+ 173   3                                      seg_buf[6]=rtc[2]/10;
+ 174   3                                      seg_buf[7]=rtc[2]%10;
+ 175   3                              break;
+ 176   3                              case 1:
+ 177   3                                      if(echo_index==0)
+ 178   3                                      {
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 21:11:01 PAGE 4   
+
+ 179   4                                              seg_buf[0]=12;
+ 180   4                                              seg_buf[1]=10;
+ 181   4                                              seg_buf[2]=!(trigger_num==0)?((unsigned char)temperature_max/10):10;
+ 182   4                                              seg_buf[3]=!(trigger_num==0)?((unsigned char)temperature_max%10):10;
+ 183   4                                              seg_buf[4]=!(trigger_num==0)?11:10;
+ 184   4                                              seg_buf[5]=!(trigger_num==0)?((unsigned char)temperature_average/10):10;
+ 185   4                                              seg_buf[6]=!(trigger_num==0)?((unsigned char)temperature_average%10+','):10;
+ 186   4                                              seg_buf[7]=!(trigger_num==0)?((unsigned int)(temperature_average*10)%10):10;
+ 187   4                                      }
+ 188   3                                      else if(echo_index==1)
+ 189   3                                      {
+ 190   4                                              seg_buf[0]=13;
+ 191   4                                              seg_buf[1]=10;
+ 192   4                                              seg_buf[2]=!(trigger_num==0)?((unsigned char)humidity_max/10):10;
+ 193   4                                              seg_buf[3]=!(trigger_num==0)?((unsigned char)humidity_max%10):10;
+ 194   4                                              seg_buf[4]=!(trigger_num==0)?11:10;
+ 195   4                                              seg_buf[5]=!(trigger_num==0)?((unsigned char)humidity_average/10):10;
+ 196   4                                              seg_buf[6]=!(trigger_num==0)?((unsigned char)humidity_average%10+','):10;
+ 197   4                                              seg_buf[7]=!(trigger_num==0)?((unsigned int)(humidity_average*10)%10):10;
+ 198   4      //                                      seg_buf[5]=(unsigned char)ad_light_voltage/10;
+ 199   4      //                                      seg_buf[6]=(unsigned char)ad_light_voltage%10+',';
+ 200   4      //                                      seg_buf[7]=(unsigned int)(ad_light_voltage*10)%10;
+ 201   4                                      }
+ 202   3                                      else if(echo_index==2)
+ 203   3                                      {
+ 204   4                                              seg_buf[0]=14;
+ 205   4                                              seg_buf[1]=trigger_num/10;
+ 206   4                                              seg_buf[2]=trigger_num%10;
+ 207   4                                              seg_buf[3]=!(trigger_num==0)?(trigger_time[0]/10):10;
+ 208   4                                              seg_buf[4]=!(trigger_num==0)?(trigger_time[0]%10):10;
+ 209   4                                              seg_buf[5]=!(trigger_num==0)?11:10;
+ 210   4                                              seg_buf[6]=!(trigger_num==0)?(trigger_time[1]/10):10;
+ 211   4                                              seg_buf[7]=!(trigger_num==0)?(trigger_time[1]%10):10;
+ 212   4                                      }
+ 213   3                              break;
+ 214   3                              case 2:
+ 215   3                                      seg_buf[0]=15;
+ 216   3                                      seg_buf[1]=seg_buf[2]=seg_buf[3]=seg_buf[4]=seg_buf[5]=10;
+ 217   3                                      seg_buf[6]=temperature_parameter/10;
+ 218   3                                      seg_buf[7]=temperature_parameter%10;
+ 219   3                              break;
+ 220   3                      }
+ 221   2              }
+ 222   1              else
+ 223   1              {
+ 224   2                      seg_buf[0]=16;
+ 225   2                      seg_buf[1]=10;
+ 226   2                      seg_buf[2]=10;
+ 227   2                      seg_buf[3]=(unsigned char)temperature_trigger/10;
+ 228   2                      seg_buf[4]=(unsigned char)temperature_trigger%10;
+ 229   2                      seg_buf[5]=11;
+ 230   2                      seg_buf[6]=!(humidity_trigger==0)?((unsigned char)humidity_trigger/10):17;
+ 231   2                      seg_buf[7]=!(humidity_trigger==0)?((unsigned char)humidity_trigger%10):17;
+ 232   2              }
+ 233   1      }
+ 234          /*==========LED控制区域==========*/
+ 235          void led_task(void)
+ 236          {
+ 237   1              led_buf[0]=(trigger_flag==0 && seg_show_mode==0);
+ 238   1              led_buf[1]=(trigger_flag==0 && seg_show_mode==1);
+ 239   1              led_buf[2]=(trigger_flag==1);
+ 240   1              
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 21:11:01 PAGE 5   
+
+ 241   1              
+ 242   1      //      led_buf[3]=(temperature_trigger>temperature_parameter)?time_100ms_flag:0;
+ 243   1      //      led_buf[4]=(trigger_num>=1 && humidity_trigger==0);
+ 244   1              led_buf[3]=(temperature>temperature_parameter)?time_100ms_flag:0;
+ 245   1              led_buf[4]=(trigger_num>=1 && humidity==0);
+ 246   1              led_buf[5]=(trigger_num>=2 && temperature_trigger>temperature_trigger_old && humidity_trigger>humidity_tr
+             -igger_old);
+ 247   1              
+ 248   1              led_disp(led_buf);
+ 249   1      }
+ 250          /*==========NE555定时器0区域==========*/
+ 251          void NE555_Timer0_Init(void)            //1毫秒@12.000MHz
+ 252          {
+ 253   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+ 254   1              TMOD &= 0xF0;                   //设置定时器模式
+ 255   1              TMOD |= 0x05;                   //设置定时器模式
+ 256   1              TL0 = 0;                                //设置定时初始值
+ 257   1              TH0 = 0;                                //设置定时初始值
+ 258   1              TF0 = 0;                                //清除TF0标志
+ 259   1              TR0 = 1;                                //定时器0开始计时
+ 260   1      }
+ 261          /*==========定时器1区域==========*/
+ 262          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 263          {
+ 264   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 265   1              TMOD &= 0x0F;                   //设置定时器模式
+ 266   1              TL1 = 0x18;                             //设置定时初始值
+ 267   1              TH1 = 0xFC;                             //设置定时初始值
+ 268   1              TF1 = 0;                                //清除TF1标志
+ 269   1              TR1 = 1;                                //定时器1开始计时
+ 270   1              ET1 = 1;                                //使能定时器1中断
+ 271   1              EA=1;
+ 272   1      }
+ 273          void Timer1_Isr(void) interrupt 3
+ 274          {
+ 275   1              sys_tick++;
+ 276   1              if(++ne555_cycle_1s==100)
+ 277   1              {
+ 278   2                      ne555_cycle_1s=0;
+ 279   2                      ne555_frequency=TH0<<8|TL0;
+ 280   2                      TH0=TL0=0;
+ 281   2                      ne555_frequency=ne555_frequency*10;
+ 282   2                      if(ne555_frequency>=200 && ne555_frequency<=2000)
+ 283   2                              humidity=(8.0/180.0)*(ne555_frequency-200.0)+10.0;
+ 284   2                      else
+ 285   2                              humidity=0;
+ 286   2              }
+ 287   1              
+ 288   1              seg_pos=(++seg_pos)%8;
+ 289   1              if(seg_buf[seg_pos]>20)
+ 290   1                      seg_disp(seg_pos,seg_buf[seg_pos]-',',1);
+ 291   1              else
+ 292   1                      seg_disp(seg_pos,seg_buf[seg_pos],0);
+ 293   1              
+ 294   1              
+ 295   1              if(trigger_flag==1)
+ 296   1              {
+ 297   2                      if(++time_3s==3000)
+ 298   2                      {
+ 299   3                              trigger_flag=0;
+ 300   3                              time_3s=0;
+ 301   3                      }
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 21:11:01 PAGE 6   
+
+ 302   2              }
+ 303   1              
+ 304   1              if(key9_press_flag==1)
+ 305   1              {
+ 306   2                      if(++time_2s>=2000)
+ 307   2                      {
+ 308   3                              time_2s=2000;
+ 309   3                      }
+ 310   2              }
+ 311   1              else
+ 312   1                      time_2s=0;
+ 313   1              
+ 314   1              
+ 315   1              if(temperature_trigger>temperature_parameter)
+ 316   1              {
+ 317   2                      if(++time_100ms==100)
+ 318   2                      {
+ 319   3                              time_100ms=0;
+ 320   3                              time_100ms_flag^=1;
+ 321   3                      }
+ 322   2              }
+ 323   1              else
+ 324   1                      time_100ms_flag=time_100ms=0;
+ 325   1      }
+ 326          /*==========调度器区域==========*/
+ 327          typedef struct{
+ 328                  void (*taskfunction)(void);
+ 329                  unsigned long int rate_time;
+ 330                  unsigned long int last_time;
+ 331          }TaskMessage;
+ 332          idata TaskMessage TaskSchedule[]={
+ 333                  {key_task,20,0},
+ 334                  {led_task,1,0},
+ 335                  {seg_task,200,0},
+ 336                  {rtc_task,300,0},
+ 337                  {temperature_task,250,0},
+ 338                  {adda_task,160,0},
+ 339          };
+ 340          idata unsigned char task_num;
+ 341          void task_init(void)
+ 342          {
+ 343   1              task_num=sizeof(TaskSchedule)/sizeof(TaskMessage);
+ 344   1      }
+ 345          void schedule_run(void)
+ 346          {
+ 347   1              unsigned char i;
+ 348   1              for(i=0;i<task_num;i++)
+ 349   1              {
+ 350   2                      unsigned long int now_time=sys_tick;
+ 351   2                      if(now_time>=TaskSchedule[i].rate_time+TaskSchedule[i].last_time)
+ 352   2                      {
+ 353   3                              TaskSchedule[i].last_time=now_time;
+ 354   3                              TaskSchedule[i].taskfunction();
+ 355   3                      }
+ 356   2              }
+ 357   1      }
+ 358          /*==========初始化区域==========*/
+ 359          void init_task(void)
+ 360          {
+ 361   1              sys_init();
+ 362   1              task_init();
+ 363   1              rtc_write(rtc);
+C51 COMPILER V9.54   MAIN                                                                  06/12/2025 21:11:01 PAGE 7   
+
+ 364   1              while(temperature_read()==85)
+ 365   1                      ;
+ 366   1              NE555_Timer0_Init();
+ 367   1              Timer1_Init();
+ 368   1      }
+ 369          /*==========主函数区域==========*/
+ 370          void main(void)
+ 371          {
+ 372   1              init_task();
+ 373   1              while(1)
+ 374   1              {
+ 375   2                      schedule_run();
+ 376   2              }
+ 377   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2206    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       5
+   IDATA SIZE       =    155    ----
+   BIT SIZE         =      5    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

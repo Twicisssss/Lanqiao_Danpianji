@@ -1,0 +1,8 @@
+".\Objects\main.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj",
+".\Objects\iic.obj" 
+TO ".\Objects\AT24C02" 
+PRINT(".\Listings\AT24C02.m51") RAMSIZE(256) 

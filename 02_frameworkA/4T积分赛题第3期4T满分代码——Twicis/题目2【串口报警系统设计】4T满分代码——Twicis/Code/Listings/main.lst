@@ -1,0 +1,190 @@
+C51 COMPILER V9.54   MAIN                                                                  04/07/2025 10:35:02 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include <Init.H>
+   3          #include <Seg.H>
+   4          #include <Key.H>
+   5          #include <Uart.H>
+   6          #include <string.H>
+   7          unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+   8          unsigned char Seg_Slow,Seg_Pos,Seg_Buf[8]={10,10,10,10,10,10,10,10};
+   9          unsigned char Uart_Buf[10]={0};
+  10          unsigned char Uart_Index;
+  11          unsigned char Uart_Rx_Flag;
+  12          unsigned char Uart_Tick;
+  13          
+  14          unsigned char Seg_Show_Mode=0;//【0-发送界面】【1-报警界面】
+  15          
+  16          unsigned char Data_Single[7]={10};
+  17          unsigned char Data_Single_Index=0;
+  18          unsigned char Data_Send_char=0;
+  19          
+  20          void Key_Proc()
+  21          {
+  22   1              unsigned char j;
+  23   1              if(Key_Slow)return;
+  24   1              Key_Slow=1;
+  25   1              
+  26   1              Key_Val=Key_Read();
+  27   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  28   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  29   1              Key_Old=Key_Val;
+  30   1              
+  31   1              Data_Send_char=0x00;
+  32   1              switch(Key_Down)
+  33   1              {
+  34   2                      case 4:
+  35   2                              if(Seg_Show_Mode==0 && Data_Single_Index>0)
+  36   2                              {
+  37   3                                      for(j=0;j<Data_Single_Index;j++)
+  38   3                                      {
+  39   4                                              Data_Send_char|=Data_Single[j]<<(Data_Single_Index-1-j);
+  40   4                                      }
+  41   3                                      if(((Data_Send_char>=0x00) && (Data_Send_char<=0x1f))||(Data_Send_char==0x7f))
+  42   3                                      {
+  43   4                                              Seg_Show_Mode=1;
+  44   4                                      }
+  45   3                                      else
+  46   3                                      {
+  47   4                                              printf("%c",Data_Send_char);
+  48   4                                              memset(Data_Single,10,Data_Single_Index);
+  49   4                                              Data_Single_Index=0;
+  50   4                                      }
+  51   3                              }
+  52   2                              else if(Seg_Show_Mode==1)
+  53   2                              {
+  54   3                                      Seg_Show_Mode=0;
+C51 COMPILER V9.54   MAIN                                                                  04/07/2025 10:35:02 PAGE 2   
+
+  55   3                                      memset(Data_Single,0,Data_Single_Index);
+  56   3                                      Data_Single_Index=0;
+  57   3                              }
+  58   2                      break;
+  59   2                      case 8:
+  60   2                              if(Seg_Show_Mode==0 && Data_Single_Index<7)
+  61   2                              {
+  62   3                                      Data_Single[Data_Single_Index++]=1;
+  63   3                              }
+  64   2                      break;
+  65   2                      case 12:
+  66   2                              if(Seg_Show_Mode==0 && Data_Single_Index<7 && Data_Single_Index>=1)
+  67   2                              {
+  68   3                                      Data_Single[Data_Single_Index++]=0;
+  69   3                              }
+  70   2                      break;
+  71   2              }
+  72   1      }
+  73          void Seg_Proc()
+  74          {
+  75   1              unsigned char i;
+  76   1              if(Seg_Slow)return;
+  77   1              Seg_Slow=1;
+  78   1                      
+  79   1              if(Seg_Show_Mode==0)
+  80   1              {
+  81   2                      Seg_Buf[0]=11;
+  82   2                      for(i=0;i<Data_Single_Index;i++)
+  83   2                      {
+  84   3                              Seg_Buf[7-i]=Data_Single[Data_Single_Index-1-i];
+  85   3                      }
+  86   2                      for(;i<7;i++)
+  87   2                      {
+  88   3                              Seg_Buf[7-i]=10;
+  89   3                      }
+  90   2              }
+  91   1              else
+  92   1              {
+  93   2                      Seg_Buf[0]=Seg_Buf[1]=12;
+  94   2                      Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=Seg_Buf[5]=Seg_Buf[6]=Seg_Buf[7]=10;
+  95   2              }
+  96   1      }
+  97          void Uart_Proc()
+  98          {
+  99   1              if(Uart_Index==0)return;
+ 100   1              if(Uart_Tick>=10)
+ 101   1              {
+ 102   2                      
+ 103   2                      
+ 104   2                      Uart_Tick=0;
+ 105   2                      memset(Uart_Buf,0,Uart_Index);
+ 106   2                      Uart_Index=0;
+ 107   2              }
+ 108   1      }
+ 109          void Uart1_Isr(void) interrupt 4
+ 110          {
+ 111   1              if (RI)                         //检测串口1接收中断
+ 112   1              {
+ 113   2                      Uart_Rx_Flag=1;
+ 114   2                      Uart_Tick=0;
+ 115   2                      Uart_Buf[Uart_Index++]=SBUF;
+ 116   2                      
+C51 COMPILER V9.54   MAIN                                                                  04/07/2025 10:35:02 PAGE 3   
+
+ 117   2                      RI = 0;                 //清除串口1接收中断请求位
+ 118   2                      if(Uart_Index>10)
+ 119   2                      {
+ 120   3                              Uart_Index=0;
+ 121   3                              memset(Uart_Buf,0,10);
+ 122   3                      }
+ 123   2              }
+ 124   1      }
+ 125          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 126          {
+ 127   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 128   1              TMOD &= 0x0F;                   //设置定时器模式
+ 129   1              TL1 = 0x18;                             //设置定时初始值
+ 130   1              TH1 = 0xFC;                             //设置定时初始值
+ 131   1              TF1 = 0;                                //清除TF1标志
+ 132   1              TR1 = 1;                                //定时器1开始计时
+ 133   1              ET1 = 1;                                //使能定时器1中断
+ 134   1              EA=1;
+ 135   1      }
+ 136          void Timer1_Isr(void) interrupt 3
+ 137          {
+ 138   1              if(++Key_Slow==20)Key_Slow=0;
+ 139   1              if(++Seg_Slow==50)Seg_Slow=0;
+ 140   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 141   1              if(Seg_Buf[Seg_Pos]>20)
+ 142   1                      Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos]-',',1);
+ 143   1              else
+ 144   1                      Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],0);
+ 145   1              
+ 146   1              if(Uart_Rx_Flag==1)
+ 147   1                      Uart_Tick++;
+ 148   1      }
+ 149          void main()
+ 150          {
+ 151   1              Sys_Init();
+ 152   1              Timer1_Init();
+ 153   1              Uart1_Init();
+ 154   1              while(1)
+ 155   1              {
+ 156   2                      Key_Proc();
+ 157   2                      Seg_Proc();
+ 158   2                      Uart_Proc();
+ 159   2              }
+ 160   1      }
+ 161          
+ 162          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    622    ----
+   CONSTANT SIZE    =      3    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     38    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

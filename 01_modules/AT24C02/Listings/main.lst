@@ -1,0 +1,145 @@
+C51 COMPILER V9.54   MAIN                                                                  02/24/2025 20:26:30 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Key.H>
+   5          #include <Led.H>
+   6          #include <Seg.H>
+   7          #include <iic.H>
+   8          /*变量声明区域*/
+   9          unsigned char Key_Slow=0;
+  10          unsigned char Key_Val,Key_Old,Key_Down,Key_Up;
+  11          unsigned char Seg_Slow=0;
+  12          unsigned char Seg_Pos=0;
+  13          unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10};
+  14          unsigned char Seg_Point[8]={0,0,0,0,0,0,0,0};
+  15          unsigned char Led_Buf[8]={0,0,0,0,0,0,0,0};
+  16          
+  17          unsigned char dat[2]={30,60};
+  18          /*按键控制区域*/
+  19          void Key_Proc()
+  20          {
+  21   1              if(Key_Slow)return;
+  22   1              Key_Slow=1;
+  23   1              
+  24   1              Key_Val=Key_Read();
+  25   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  26   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  27   1              Key_Old=Key_Val;
+  28   1              
+  29   1              switch(Key_Down)
+  30   1              {
+  31   2                      case 8:
+  32   2                              dat[0]-=10;
+  33   2                      break;
+  34   2                      case 9:
+  35   2                              dat[0]+=10;
+  36   2                      break;
+  37   2                      case 12:
+  38   2                              dat[1]-=10;
+  39   2                      break;
+  40   2                      case 13:
+  41   2                              dat[1]+=10;
+  42   2                      break;
+  43   2                      
+  44   2                      case 19:
+  45   2                              EEPROM_Write(dat,0,2);
+  46   2                      break;
+  47   2                      
+  48   2              }
+  49   1      }
+  50          /*数码管显示区域*/
+  51          void Seg_Proc()
+  52          {
+  53   1              if(Seg_Slow)return;
+  54   1              Seg_Slow=1;
+C51 COMPILER V9.54   MAIN                                                                  02/24/2025 20:26:30 PAGE 2   
+
+  55   1              
+  56   1              
+  57   1              Seg_Buf[0]=Key_Read()/10%10;
+  58   1              Seg_Buf[1]=Key_Read()/1%10;
+  59   1              Seg_Point[1]=1;
+  60   1              
+  61   1              Seg_Buf[2]=dat[0]/100%10;
+  62   1              Seg_Buf[3]=dat[0]/10%10;
+  63   1              Seg_Buf[4]=dat[0]/1%10;
+  64   1              Seg_Point[4]=1;
+  65   1              
+  66   1              Seg_Buf[5]=dat[1]/100%10;
+  67   1              Seg_Buf[6]=dat[1]/10%10;
+  68   1              Seg_Buf[7]=dat[1]/1%10;
+  69   1              Seg_Point[7]=1;
+  70   1      }
+  71          /*Led显示区域*/
+  72          void Led_Proc()
+  73          {
+  74   1              Led_Buf[1]=1;
+  75   1      }
+  76          /*定时器区域*/
+  77          void Timer0_Isr(void) interrupt 1
+  78          {
+  79   1              if(++Key_Slow==20)Key_Slow=0;
+  80   1              if(++Seg_Slow==200)Seg_Slow=0;
+  81   1              
+  82   1              if(++Seg_Pos==8)Seg_Pos=0;
+  83   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+  84   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+  85   1      }
+  86          
+  87          void Timer0_Init(void)          //1毫秒@12.000MHz
+  88          {
+  89   1              AUXR &= 0x7F;                   //定时器时钟12T模式
+  90   1              TMOD &= 0xF0;                   //设置定时器模式
+  91   1              TL0 = 0x18;                             //设置定时初始值
+  92   1              TH0 = 0xFC;                             //设置定时初始值
+  93   1              TF0 = 0;                                //清除TF0标志
+  94   1              TR0 = 1;                                //定时器0开始计时
+  95   1              ET0 = 1;                                //使能定时器0中断
+  96   1              EA=1;
+  97   1      }
+  98          /*初始化区域*/
+  99          void Init_Proc()
+ 100          {
+ 101   1              EEPROM_Read(dat,0,2);
+ 102   1              Sys_Init();
+ 103   1              Timer0_Init();
+ 104   1      }
+ 105          /*主函数区域*/
+ 106          void main()
+ 107          {
+ 108   1              Init_Proc();
+ 109   1              while(1)
+ 110   1              {
+ 111   2                      Key_Proc();
+ 112   2                      Seg_Proc();
+ 113   2                      Led_Proc();
+ 114   2              }
+ 115   1      }
+ 116          
+C51 COMPILER V9.54   MAIN                                                                  02/24/2025 20:26:30 PAGE 3   
+
+ 117          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    383    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     33    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,9 @@
+".\Objects\main.obj",
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj",
+".\Objects\iic.obj",
+".\Objects\Ultrasound.obj" 
+TO ".\Objects\No13_P2" 
+PRINT(".\Listings\No13_P2.m51") RAMSIZE(256) 

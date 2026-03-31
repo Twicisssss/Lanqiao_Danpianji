@@ -1,0 +1,8 @@
+".\Objects\Init.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj",
+".\Objects\Uart.obj",
+".\Objects\main.obj" 
+TO ".\Objects\Usart" 
+PRINT(".\Listings\Usart.m51") RAMSIZE(256) 

@@ -1,0 +1,137 @@
+C51 COMPILER V9.54   LED                                                                   05/11/2025 10:32:20 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE LED
+OBJECT MODULE PLACED IN .\Objects\led.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Source\Driver\led.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Source\Driver;
+                    -..\Source\User) DEBUG OBJECTEXTEND PRINT(.\Listings\led.lst) OBJECT(.\Objects\led.obj)
+
+line level    source
+
+   1          #include <led.H>
+   2          idata unsigned char led=0x00;
+   3          idata unsigned char led_old=0xff;
+   4          void led_disp(unsigned char *pLed)
+   5          {
+   6   1              unsigned char temp;
+   7   1              
+   8   1              led=0x00;
+   9   1              led=(pLed[0]<<0)|(pLed[1]<<1)|(pLed[2]<<2)|(pLed[3]<<3)|
+  10   1                              (pLed[4]<<4)|(pLed[5]<<5)|(pLed[6]<<6)|(pLed[7]<<7);
+  11   1              
+  12   1              if(led!=led_old)
+  13   1              {
+  14   2                      P0=~led;
+  15   2                      
+  16   2                      temp=P2&0x1f;
+  17   2                      temp=temp|0x80;
+  18   2                      P2=temp;
+  19   2                      temp=P2&0x1f;
+  20   2                      P2=temp;                
+  21   2                      
+  22   2                      led_old=led;
+  23   2              }
+  24   1      }
+  25          void led_off()
+  26          {
+  27   1              unsigned char temp;
+  28   1              
+  29   1              led=0xff;
+  30   1              
+  31   1              P0=led;
+  32   1              
+  33   1              temp=P2&0x1f;
+  34   1              temp=temp|0x80;
+  35   1              P2=temp;
+  36   1              temp=P2&0x1f;
+  37   1              P2=temp;                
+  38   1              
+  39   1              led_old=0x00;
+  40   1      }
+  41          
+  42          idata unsigned char brm=0x00;
+  43          idata unsigned char brm_old=0xff;
+  44          void beep(bit enable)
+  45          {
+  46   1              unsigned char temp;
+  47   1              
+  48   1              if(enable)
+  49   1                      brm|=0x40;
+  50   1              else
+  51   1                      brm&=~(0x40);
+  52   1              
+  53   1              if(brm!=brm_old)
+  54   1              {
+C51 COMPILER V9.54   LED                                                                   05/11/2025 10:32:20 PAGE 2   
+
+  55   2                      P0=brm;
+  56   2                      
+  57   2                      temp=P2&0x1f;
+  58   2                      temp=temp|0xa0;
+  59   2                      P2=temp;
+  60   2                      temp=P2&0x1f;
+  61   2                      P2=temp;                
+  62   2                      
+  63   2                      brm_old=brm;
+  64   2              }
+  65   1      }
+  66          void relay(bit enable)
+  67          {
+  68   1              unsigned char temp;
+  69   1              
+  70   1              if(enable)
+  71   1                      brm|=0x10;
+  72   1              else
+  73   1                      brm&=~(0x10);
+  74   1              
+  75   1              if(brm!=brm_old)
+  76   1              {
+  77   2                      P0=brm;
+  78   2                      
+  79   2                      temp=P2&0x1f;
+  80   2                      temp=temp|0xa0;
+  81   2                      P2=temp;
+  82   2                      temp=P2&0x1f;
+  83   2                      P2=temp;                
+  84   2                      
+  85   2                      brm_old=brm;
+  86   2              }
+  87   1      }
+  88          //void motor(bit enable)
+  89          //{
+  90          //      unsigned char temp;
+  91          //      
+  92          //      if(enable)
+  93          //              brm|=0x20;
+  94          //      else
+  95          //              brm&=~(0x20);
+  96          //      
+  97          //      if(brm!=brm_old)
+  98          //      {
+  99          //              P0=brm;
+ 100          //              
+ 101          //              temp=P2&0x1f;
+ 102          //              temp=temp|0xa0;
+ 103          //              P2=temp;
+ 104          //              temp=P2&0x1f;
+ 105          //              P2=temp;                
+ 106          //              
+ 107          //              brm_old=brm;
+ 108          //      }
+ 109          //}
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    246    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+C51 COMPILER V9.54   LED                                                                   05/11/2025 10:32:20 PAGE 3   
+
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =      4    ----
+   BIT SIZE         =   ----       2
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

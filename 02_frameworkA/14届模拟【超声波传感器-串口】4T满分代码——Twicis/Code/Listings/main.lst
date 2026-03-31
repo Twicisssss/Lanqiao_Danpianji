@@ -1,0 +1,232 @@
+C51 COMPILER V9.54   MAIN                                                                  04/02/2025 18:53:37 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE User\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Driver;.\User) DEBUG OBJEC
+                    -TEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*头文件引用区域*/
+   2          #include <STC15F2K60S2.H>
+   3          #include <Init.H>
+   4          #include <Led.H>
+   5          #include <Seg.H>
+   6          #include <Key.H>
+   7          #include <Ultrasound.H>
+   8          #include <Uart.H>
+   9          /*变量声明区域*/
+  10          idata unsigned char Key_Slow,Key_Val,Key_Old,Key_Down,Key_Up;
+  11          idata unsigned char Seg_Slow,Seg_Pos;
+  12          idata unsigned char Seg_Buf[8]={10,10,10,10,10,10,10,10},Seg_Point[8]={0,0,0,0,0,0,0,0};
+  13          idata unsigned char Beeper_Buf=0,Relay_Buf=0,Led_Buf[8]={0,0,0,0,0,0,0,0};
+  14          
+  15          pdata unsigned char Uart_Buf[10] = {0}; // 串口接收缓冲区
+  16          idata unsigned char Uart_Rx_Index;      // 串口接收索引
+  17          idata unsigned char Uart_Recv_Tick;     // 串口接收时间标志
+  18          idata unsigned char Uart_Rx_Flag;
+  19          idata unsigned char Uart_MCU_String[20];
+  20          
+  21          idata unsigned char Seg_Show_Mode=0;//【0-距离】【1-参数】
+  22          idata unsigned char US_Distance;
+  23          idata unsigned char Distance_Parameter=30;
+  24          
+  25          idata unsigned char Time_200ms;
+  26          idata bit Time_200ms_Flag;
+  27          
+  28          idata unsigned char i;
+  29          /*按键控制区域*/
+  30          void Key_Proc()
+  31          {
+  32   1              if(Key_Slow)return;
+  33   1              Key_Slow=1;
+  34   1              
+  35   1              Key_Val=Key_Read();
+  36   1              Key_Down=Key_Val&(Key_Old^Key_Val);
+  37   1              Key_Up=~Key_Val&(Key_Old^Key_Val);
+  38   1              Key_Old=Key_Val;
+  39   1              
+  40   1              switch(Key_Down)
+  41   1              {
+  42   2                      case 4:
+  43   2                              if(++Seg_Show_Mode==2)Seg_Show_Mode=0;
+  44   2                      break;
+  45   2                      case 8:
+  46   2                              if(Seg_Show_Mode==0)
+  47   2                                      Distance_Parameter=US_Distance;
+  48   2                      break;
+  49   2                      case 12:
+  50   2                              if(Seg_Show_Mode==1)
+  51   2                              {
+  52   3                                      if(Distance_Parameter>=246 && Distance_Parameter<=255)
+  53   3                                              Distance_Parameter=Distance_Parameter;
+  54   3                                      else
+C51 COMPILER V9.54   MAIN                                                                  04/02/2025 18:53:37 PAGE 2   
+
+  55   3                                              Distance_Parameter+=10;
+  56   3                              }
+  57   2                      break;
+  58   2                      case 16:
+  59   2                              if(Seg_Show_Mode==1)
+  60   2                              {
+  61   3                                      if(Distance_Parameter>=0 && Distance_Parameter<=9)
+  62   3                                              Distance_Parameter=0;
+  63   3                                      else
+  64   3                                              Distance_Parameter-=10;
+  65   3                              }
+  66   2                      break;
+  67   2                      case 9://"串口发送"按键，按下将当前检测的距离数据发送给PC端的串口调试工具。
+  68   2                              printf("Distance:%dcm\r\n",(int)US_Distance);
+  69   2                      break;
+  70   2              }
+  71   1      }
+  72          /*数码管控制区域*/
+  73          void Seg_Proc()
+  74          {
+  75   1              if(Seg_Slow)return;
+  76   1              Seg_Slow=1;
+  77   1              
+  78   1              
+  79   1              US_Distance=US_Distance_Get();
+  80   1              
+  81   1              
+  82   1              Seg_Buf[0]=11;Seg_Buf[2]=Seg_Buf[3]=Seg_Buf[4]=10;
+  83   1              switch(Seg_Show_Mode)
+  84   1              {
+  85   2                      case 0:
+  86   2                              Seg_Buf[1]=1;
+  87   2                              Seg_Buf[5]=US_Distance/100%10;
+  88   2                              Seg_Buf[6]=US_Distance/10%10;
+  89   2                              Seg_Buf[7]=US_Distance/1%10;
+  90   2                              for(i=5;i<7;i++)
+  91   2                              {
+  92   3                                      if(Seg_Buf[i]!=0)break;
+  93   3                                      Seg_Buf[i]=10;
+  94   3                              }
+  95   2                      break;
+  96   2                      case 1:
+  97   2                              Seg_Buf[1]=2;
+  98   2                              Seg_Buf[5]=Distance_Parameter/100%10;
+  99   2                              Seg_Buf[6]=Distance_Parameter/10%10;
+ 100   2                              Seg_Buf[7]=Distance_Parameter/1%10;
+ 101   2                              for(i=5;i<7;i++)
+ 102   2                              {
+ 103   3                                      if(Seg_Buf[i]!=0)break;
+ 104   3                                      Seg_Buf[i]=10;
+ 105   3                              }
+ 106   2                      break;
+ 107   2              }
+ 108   1      }
+ 109          /*Led控制区域*/
+ 110          void Led_Proc()
+ 111          {
+ 112   1              Beeper_Buf=Relay_Buf=0;
+ 113   1              Led_Buf[0]=Seg_Show_Mode==0?1:0;
+ 114   1              Led_Buf[1]=Seg_Show_Mode==1?1:0;
+ 115   1              
+ 116   1              
+C51 COMPILER V9.54   MAIN                                                                  04/02/2025 18:53:37 PAGE 3   
+
+ 117   1              Led_Buf[2]=US_Distance>Distance_Parameter?Time_200ms_Flag:0;
+ 118   1      }
+ 119          /*串口控制区域*/
+ 120          void Uart_Proc()
+ 121          {
+ 122   1              if (Uart_Rx_Index == 0)
+ 123   1                      return; // 无数据，直接返回
+ 124   1              if (Uart_Recv_Tick >= 10)
+ 125   1              { // 若接收超时，对数据读取，清空缓存区
+ 126   2                      Uart_Recv_Tick = 0;
+ 127   2                      Uart_Rx_Flag = 0 ;
+ 128   2                      //处理函数
+ 129   2                      memset(Uart_Buf, 0, Uart_Rx_Index); // 清空接收数据
+ 130   2                      Uart_Rx_Index = 0;
+ 131   2              }
+ 132   1      }
+ 133           /*定时器1区域*/
+ 134          void Timer1_Init(void)          //1毫秒@12.000MHz
+ 135          {
+ 136   1              AUXR &= 0xBF;                   //定时器时钟12T模式
+ 137   1              TMOD &= 0x0F;                   //设置定时器模式
+ 138   1              TL1 = 0x18;                             //设置定时初始值
+ 139   1              TH1 = 0xFC;                             //设置定时初始值
+ 140   1              TF1 = 0;                                //清除TF1标志
+ 141   1              TR1 = 1;                                //定时器1开始计时
+ 142   1              ET1 = 1;                                //使能定时器1中断
+ 143   1              EA=1;
+ 144   1      }
+ 145          void Timer1_Isr(void) interrupt 3
+ 146          {
+ 147   1              if(++Key_Slow==20)Key_Slow=0;
+ 148   1              if(++Seg_Slow==90)Seg_Slow=0;
+ 149   1              if(Uart_Rx_Flag)Uart_Recv_Tick++;// 串口接收计时增加
+ 150   1              
+ 151   1              if(US_Distance>Distance_Parameter)
+ 152   1              {
+ 153   2                      if(++Time_200ms==200)
+ 154   2                      {
+ 155   3                              Time_200ms=0;
+ 156   3                              Time_200ms_Flag^=1;
+ 157   3                      }
+ 158   2              }
+ 159   1              
+ 160   1              
+ 161   1              if(++Seg_Pos==8)Seg_Pos=0;
+ 162   1              Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 163   1              Led_Disp(Seg_Pos,Led_Buf[Seg_Pos]);
+ 164   1              Beeper(Beeper_Buf);
+ 165   1              Relay(Relay_Buf);
+ 166   1      }
+ 167          /*串口中断区域*/
+ 168          void Uart1_Isr(void) interrupt 4
+ 169          {
+ 170   1              // 若接收到数据
+ 171   1              if (RI)
+ 172   1              {
+ 173   2                      Uart_Rx_Flag = 1;                 // 接收标志
+ 174   2                      Uart_Recv_Tick = 0;               // 清零接收时间标志
+ 175   2                      Uart_Buf[Uart_Rx_Index++] = SBUF; // 将数据保存到缓冲区
+ 176   2                      RI = 0;                           // 清除接收中断标志
+ 177   2                      if (Uart_Rx_Index > 10)
+ 178   2                      {
+C51 COMPILER V9.54   MAIN                                                                  04/02/2025 18:53:37 PAGE 4   
+
+ 179   3                              Uart_Rx_Index = 0; // 防止溢出
+ 180   3                              memset(Uart_Buf, 0, 10);
+ 181   3                      }
+ 182   2              }
+ 183   1      }
+ 184           /*初始化区域*/
+ 185          void Init_Proc()
+ 186          {
+ 187   1              Sys_Init();
+ 188   1              Uart1_Init();
+ 189   1              Timer1_Init();
+ 190   1      }
+ 191          /*主函数区域*/
+ 192          void main()
+ 193          {
+ 194   1              Init_Proc();
+ 195   1              while(1)
+ 196   1              {
+ 197   2                      Key_Proc();
+ 198   2                      Seg_Proc();
+ 199   2                      Led_Proc();
+ 200   2                      Uart_Proc();
+ 201   2              }
+ 202   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    769    ----
+   CONSTANT SIZE    =     16    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =     10    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     61    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
